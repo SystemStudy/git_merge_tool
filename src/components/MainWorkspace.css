@@ -1,0 +1,244 @@
+.main-workspace {
+  height: 100vh;
+  background: #f0f2f5;
+}
+
+.loading-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f2f5;
+}
+
+.workspace-header {
+  background: #fff;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  height: 64px;
+  line-height: 64px;
+}
+
+.project-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.workspace-content {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow: hidden;
+  height: calc(100vh - 64px);
+}
+
+.commits-section {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.commits-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.commits-table {
+  flex: 1;
+  overflow: auto;
+}
+
+.commit-hash {
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.commits-list {
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.commit-item:hover:not(.selected) {
+  background-color: #fafafa;
+}
+
+.commit-item.selected {
+  background-color: #e6f7ff !important;
+  border-left: 3px solid #1890ff;
+}
+
+.commit-item .ant-checkbox {
+  margin-right: 12px;
+}
+
+.commit-item .commit-info {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
+}
+
+.commit-item .commit-message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-item .commit-meta {
+  color: #999;
+  font-size: 12px;
+  min-width: 120px;
+}
+
+.merge-progress-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.merge-result-modal .ant-modal-body {
+  padding: 16px;
+}
+
+.merge-result-card {
+  border-left: 3px solid;
+  background: #fafafa;
+}
+
+.merge-result-card.success {
+  border-left-color: #52c41a;
+}
+
+.merge-result-card.error {
+  border-left-color: #ff4d4f;
+}
+
+.merge-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.merge-result-info strong {
+  color: #262626;
+  font-weight: 500;
+}
+
+.merge-result-link {
+  word-break: break-all;
+  color: #1890ff;
+  text-decoration: none;
+}
+
+.merge-result-link:hover {
+  text-decoration: underline;
+}
+
+/* 操作面板 - 移除日志后调整为单列 */
+.operations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: auto;
+}
+
+/* 合并类型区域样式 */
+.merge-type-section {
+  margin-bottom: 16px;
+}
+
+.section-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #262626;
+}
+
+/* 横排布局的合并类型 */
+.merge-type-radio-group {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.merge-type-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  min-width: 100px;
+  text-align: center;
+}
+
+/* 目标分支区域 */
+.target-branches-section {
+  margin-bottom: 16px;
+}
+
+.branches-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.branches-checkbox-group .ant-checkbox-wrapper {
+  margin-left: 0;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+}
+
+.branches-checkbox-group .ant-checkbox-wrapper:hover {
+  border-color: #1890ff;
+}
+
+/* 操作按钮 */
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 表格样式优化 */
+.commits-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.commits-table .ant-table-tbody > tr:hover > td {
+  background: #e6f7ff;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
