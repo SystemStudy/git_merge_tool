@@ -642,8 +642,7 @@ function setupIpcHandlers() {
       // 没有正在进行的 cherry-pick，忽略
     }
 
-    // 使用 git status --porcelain 精确检测当前模块下是否有真实的未提交变更（排除 .trae 目录）
-    const status = await currentGit.raw(['status', '--porcelain', '.', ':(exclude).trae']);
+    const status = await currentGit.raw(['status', '--porcelain', '.']);
     return status.trim().length > 0;
   });
 
