@@ -813,7 +813,8 @@ const MainWorkspace = ({ project, onClose }) => {
                   </div>
                 );
                 if (choice === 'abort') {
-                  setCherryPickProgress(prev => ({ ...prev, status: '操作已终止' }));
+                  setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                  setLoading(false);
                   message.error('操作已终止');
                   return;
                 } else {
@@ -839,7 +840,8 @@ const MainWorkspace = ({ project, onClose }) => {
                 </div>
               );
               if (choice === 'abort') {
-                setCherryPickProgress(prev => ({ ...prev, status: '操作已终止' }));
+                setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                setLoading(false);
                 message.error('操作已终止');
                 return;
               } else {
@@ -865,7 +867,8 @@ const MainWorkspace = ({ project, onClose }) => {
             );
 
             if (choice === 'abort') {
-              setCherryPickProgress(prev => ({ ...prev, status: '操作已终止' }));
+              setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+              setLoading(false);
               message.error('操作已终止');
               return;
             } else {

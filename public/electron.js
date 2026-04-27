@@ -634,8 +634,16 @@ function setupIpcHandlers() {
 
   ipcMain.handle('git-has-uncommitted-changes', async () => {
     if (!currentGit) throw new Error('未打开项目');
-    const status = await currentGit.status();
-    return status.files.length > 0;
+
+    // 先清理任何可能的 cherry-pick 残留状态，避免干扰检测
+    try {
+      await currentGit.raw(['cherry-pick', '--abort']);
+    } catch {
+      // 没有正在进行的 cherry-pick，忽略
+    }
+
+    const status = await currentGit.raw(['status', '--porcelain', '.']);
+    return status.trim().length > 0;
   });
 
   // 检查当前分支相对于目标远程分支是否有新的提交
@@ -798,6 +806,13 @@ function setupIpcHandlers() {
     console.log(`[${timestamp}] [git-cherry-pick-single] 开始 cherry-pick 单个提交: ${sha}`);
 
     if (!currentGit) throw new Error('未打开项目');
+
+    // 清理可能的 cherry-pick 残留状态
+    try {
+      await currentGit.raw(['cherry-pick', '--abort']);
+    } catch {
+      // 无需清理，忽略
+    }
 
     try {
       await currentGit.raw(['cherry-pick', sha]);
