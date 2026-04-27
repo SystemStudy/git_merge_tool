@@ -714,6 +714,85 @@ function setupIpcHandlers() {
     }
   });
 
+  ipcMain.handle('git-detect-version', async (event, targetBranch, commitMessage) => {
+    const timestamp = formatTimestamp();
+    console.log(`[${timestamp}] [git-detect-version] 检测版本: branch=${targetBranch}, message=${commitMessage}`);
+
+    if (!currentGit) throw new Error('未打开项目');
+
+    try {
+      const branchRef = `origin/${targetBranch}`;
+
+      const logOutput = await currentGit.raw([
+        'log', branchRef, '--format=%H%n%s', '-n', '5000', '--no-merges'
+      ]);
+
+      const lines = logOutput.trim().split('\n').filter(Boolean);
+      const matchingShas = [];
+      for (let i = 0; i < lines.length - 1; i += 2) {
+        if (lines[i + 1] === commitMessage) {
+          matchingShas.push(lines[i]);
+        }
+      }
+
+      console.log(`[${timestamp}] [git-detect-version] 找到 ${matchingShas.length} 条匹配记录`);
+
+      const tagMap = new Map();
+
+      for (const sha of matchingShas) {
+        try {
+          const tagOutput = await currentGit.raw([
+            'tag', '--contains', sha, '-l', 'V5.*.R.*'
+          ]);
+          const tagNames = tagOutput.trim().split('\n').filter(Boolean);
+
+          for (const tagName of tagNames) {
+            if (!tagMap.has(tagName)) {
+              const dateOutput = await currentGit.raw([
+                'log', '-1', '--format=%ai', tagName
+              ]);
+              tagMap.set(tagName, {
+                tag: tagName,
+                tagDate: dateOutput.trim()
+              });
+            }
+          }
+        } catch (e) {
+          // 该提交未找到匹配的 tag
+        }
+      }
+
+      // 只保留最新（日期最大）的一条匹配 tag
+      const allMatched = Array.from(tagMap.values());
+      allMatched.sort((a, b) => b.tagDate.localeCompare(a.tagDate));
+      const matchedTag = allMatched.length > 0 ? allMatched[0] : null;
+
+      // 获取分支当前最新的 V5.*.R.* tag（从分支顶端往前找）
+      let latestTag = null;
+      try {
+        const latestTagOutput = await currentGit.raw([
+          'describe', '--tags', '--match', 'V5.*.R.*', '--abbrev=0', branchRef
+        ]);
+        const latestTagName = latestTagOutput.trim();
+        const latestDateOutput = await currentGit.raw([
+          'log', '-1', '--format=%ai', latestTagName
+        ]);
+        latestTag = {
+          tag: latestTagName,
+          tagDate: latestDateOutput.trim()
+        };
+      } catch (e) {
+        // 该分支无匹配的 V5.*.R.* tag
+      }
+
+      console.log(`[${timestamp}] [git-detect-version] matchedTag: ${matchedTag?.tag}, latestTag: ${latestTag?.tag}`);
+      return { matchedTag, latestTag };
+    } catch (error) {
+      console.error(`[${timestamp}] [git-detect-version] 错误: ${error.message}`);
+      throw error;
+    }
+  });
+
   ipcMain.handle('git-cherry-pick-single', async (event, sha) => {
     const timestamp = formatTimestamp();
     console.log(`[${timestamp}] [git-cherry-pick-single] 开始 cherry-pick 单个提交: ${sha}`);

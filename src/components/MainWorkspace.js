@@ -33,7 +33,8 @@ import {
   ClearOutlined,
   CodeOutlined,
   CopyOutlined,
-  WarningOutlined
+  WarningOutlined,
+  TagOutlined
 } from '@ant-design/icons';
 import './MainWorkspace.css';
 
@@ -357,6 +358,9 @@ const MainWorkspace = ({ project, onClose }) => {
   const [changeDetecting, setChangeDetecting] = useState(false);
   const [changeDetectProgress, setChangeDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
   const [changeDetectResultModal, setChangeDetectResultModal] = useState({ visible: false, results: [], isSingleCommit: false, allExist: true, missingBySubject: {}, commitSubjects: [] });
+  const [versionDetecting, setVersionDetecting] = useState(false);
+  const [versionDetectProgress, setVersionDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
+  const [versionDetectResultModal, setVersionDetectResultModal] = useState({ visible: false, results: [] });
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
   const conflictResolveRef = useRef(null);
   
@@ -1706,6 +1710,97 @@ const MainWorkspace = ({ project, onClose }) => {
     }
   };
 
+  const handleDetectVersion = async () => {
+    if (selectedCommits.length === 0) {
+      message.warning('请选择要检测的提交记录');
+      return;
+    }
+    if (selectedCommits.length > 1) {
+      message.warning('检测版本仅支持选择一条提交记录，请重新选择。');
+      return;
+    }
+    if (selectedTargetBranches.length === 0) {
+      message.warning('请选择目标分支');
+      return;
+    }
+
+    const selectedCommitData = commits.find(c => c.hash === selectedCommits[0]);
+    if (!selectedCommitData || !selectedCommitData.message) {
+      message.error('无法获取选中提交的信息');
+      return;
+    }
+
+    const commitMessage = selectedCommitData.message;
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [handleDetectVersion] 开始检测版本: ${commitMessage}`);
+
+    // 过滤掉 develop 分支（develop 不需要检测版本）
+    const targetBranches = selectedTargetBranches.filter(b => b !== 'develop');
+    if (targetBranches.length === 0) {
+      message.info('目标分支中无需要检测版本的分支（已跳过 develop）');
+      return;
+    }
+
+    setVersionDetecting(true);
+    setVersionDetectProgress({
+      visible: true,
+      current: 0,
+      total: targetBranches.length,
+      status: '正在准备检测版本...'
+    });
+
+    const allResults = [];
+
+    try {
+      for (let i = 0; i < targetBranches.length; i++) {
+        const targetBranch = targetBranches[i];
+
+        setVersionDetectProgress(prev => ({
+          ...prev,
+          current: i + 1,
+          status: `正在检测 ${i + 1}/${targetBranches.length}: ${targetBranch}`
+        }));
+
+        try {
+          const branchResults = await window.electronAPI.git.detectVersion(targetBranch, commitMessage);
+          allResults.push({
+            targetBranch,
+            tags: branchResults
+          });
+        } catch (error) {
+          allResults.push({
+            targetBranch,
+            tags: [],
+            error: error.message
+          });
+        }
+      }
+
+      setVersionDetectProgress(prev => ({ ...prev, status: '检测完成' }));
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setVersionDetectProgress(prev => ({ ...prev, visible: false }));
+
+      setVersionDetectResultModal({
+        visible: true,
+        results: allResults
+      });
+
+      const totalMatched = allResults.filter(r => r.tags?.matchedTag).length;
+      if (totalMatched > 0) {
+        message.success(`检测完成，${totalMatched} 个分支找到匹配版本 tag`);
+      } else {
+        message.info('未找到匹配的版本 tag');
+      }
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] [handleDetectVersion] 检测失败:`, error);
+      message.error('检测版本失败: ' + error.message);
+      setVersionDetectProgress(prev => ({ ...prev, visible: false }));
+    } finally {
+      setVersionDetecting(false);
+    }
+  };
+
   const handleOpenInBrowser = async () => {
     try {
       const remoteUrl = await window.electronAPI.git.getRemoteUrl();
@@ -2052,6 +2147,18 @@ const MainWorkspace = ({ project, onClose }) => {
               >
                 检测变更
               </Button>
+              {mergeType === 'release' && viewBranch !== 'develop' && (
+                <Button
+                  type="default"
+                  icon={<TagOutlined />}
+                  onClick={handleDetectVersion}
+                  loading={versionDetecting}
+                  disabled={selectedCommits.length !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
+                  style={{ marginLeft: 8 }}
+                >
+                  检测版本
+                </Button>
+              )}
             </div>
           </Card>
         </div>
@@ -2649,6 +2756,119 @@ const MainWorkspace = ({ project, onClose }) => {
                 ))}
               </div>
             </>
+          )}
+        </div>
+      </Modal>
+
+      {/* 版本检测进度Modal */}
+      <Modal
+        title="检测版本"
+        open={versionDetectProgress.visible}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        width={500}
+      >
+        <div style={{ padding: '20px 0' }}>
+          <Progress
+            percent={versionDetectProgress.total > 0 ? Math.round((versionDetectProgress.current / versionDetectProgress.total) * 100) : 0}
+            status={versionDetectProgress.current < versionDetectProgress.total ? 'active' : 'success'}
+          />
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            {versionDetectProgress.status}
+          </div>
+        </div>
+      </Modal>
+
+      {/* 版本检测结果Modal */}
+      <Modal
+        title="版本检测结果"
+        open={versionDetectResultModal.visible}
+        onCancel={() => setVersionDetectResultModal({ visible: false, results: [] })}
+        footer={[
+          <Button
+            key="close"
+            type="primary"
+            onClick={() => setVersionDetectResultModal({ visible: false, results: [] })}
+          >
+            关闭
+          </Button>
+        ]}
+        width={800}
+      >
+        <div style={{ padding: '10px 0' }}>
+          {versionDetectResultModal.results.length === 0 ? (
+            <Alert message="无检测结果" type="info" showIcon />
+          ) : (
+            versionDetectResultModal.results.map((branchResult, index) => {
+              const data = branchResult.tags || {};
+              const formatDate = (text) => {
+                if (!text) return '-';
+                try {
+                  const d = new Date(text);
+                  if (isNaN(d.getTime())) return text;
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  return `${y}/${m}/${day}`;
+                } catch {
+                  return text;
+                }
+              };
+
+              return (
+                <Card
+                  key={index}
+                  size="small"
+                  title={<span><BranchesOutlined style={{ marginRight: 8 }} />{branchResult.targetBranch}</span>}
+                  style={{ marginBottom: 12 }}
+                >
+                  {branchResult.error ? (
+                    <Alert message={`查询失败: ${branchResult.error}`} type="error" showIcon />
+                  ) : (
+                    <Table
+                      dataSource={[{
+                        key: 0,
+                        matchedTag: data.matchedTag?.tag || '-',
+                        matchedDate: data.matchedTag?.tagDate || '-',
+                        latestTag: data.latestTag?.tag || '-',
+                        latestDate: data.latestTag?.tagDate || '-'
+                      }]}
+                      columns={[
+                        {
+                          title: '匹配Tag',
+                          dataIndex: 'matchedTag',
+                          key: 'matchedTag',
+                          render: (text) => text !== '-' ? <Tag color="blue">{text}</Tag> : <span style={{ color: '#999' }}>-</span>
+                        },
+                        {
+                          title: '匹配时间',
+                          dataIndex: 'matchedDate',
+                          key: 'matchedDate',
+                          width: 110,
+                          render: (text) => formatDate(text)
+                        },
+                        {
+                          title: '最新Tag',
+                          dataIndex: 'latestTag',
+                          key: 'latestTag',
+                          render: (text) => text !== '-' ? <Tag color="green">{text}</Tag> : <span style={{ color: '#999' }}>-</span>
+                        },
+                        {
+                          title: '最新时间',
+                          dataIndex: 'latestDate',
+                          key: 'latestDate',
+                          width: 110,
+                          render: (text) => formatDate(text)
+                        }
+                      ]}
+                      pagination={false}
+                      size="small"
+                    />
+                  )}
+                </Card>
+              );
+            })
           )}
         </div>
       </Modal>

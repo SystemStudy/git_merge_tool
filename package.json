@@ -38,7 +38,6 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "dmg-license": "^1.0.11",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
     "wait-on": "^7.2.0"
@@ -79,48 +78,6 @@
     },
     "portable": {
       "artifactName": "LandrayGitTool-便携版-${version}.exe"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ],
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
-    },
-    "dmg": {
-      "title": "LandrayGitTool ${version}",
-      "contents": [
-        {
-          "x": 130,
-          "y": 220
-        },
-        {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ],
-      "window": {
-        "width": 540,
-        "height": 380
-      }
     }
   },
   "browserslist": {

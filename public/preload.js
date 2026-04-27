@@ -39,7 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkCommitsInBranch: (branch, commitSubjects) => ipcRenderer.invoke('git-check-commits-in-branch', branch, commitSubjects),
     cherryPickSingle: (sha) => ipcRenderer.invoke('git-cherry-pick-single', sha),
     cherryPickContinue: () => ipcRenderer.invoke('git-cherry-pick-continue'),
-    cherryPickAbort: () => ipcRenderer.invoke('git-cherry-pick-abort')
+    cherryPickAbort: () => ipcRenderer.invoke('git-cherry-pick-abort'),
+    detectVersion: (targetBranch, commitMessage) => ipcRenderer.invoke('git-detect-version', targetBranch, commitMessage)
   },
 
   // GitLab操作
