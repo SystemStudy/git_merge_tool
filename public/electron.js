@@ -1084,7 +1084,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   closeLogger();
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
+  // 如果 3 秒后进程仍未退出（有挂起的异步操作），强制退出
+  setTimeout(() => {
+    app.exit(0);
+  }, 3000);
 });
