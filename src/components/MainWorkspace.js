@@ -2305,6 +2305,7 @@ const MainWorkspace = ({ project, onClose }) => {
         footer={null}
         maskClosable={false}
         width={600}
+        zIndex={1000}
         className="merge-progress-modal"
       >
         <div style={{ padding: '20px 0' }}>
@@ -2470,6 +2471,7 @@ const MainWorkspace = ({ project, onClose }) => {
         open={conflictModal.visible}
         closable={false}
         maskClosable={false}
+        zIndex={1050}
         footer={[
           <Button key="cancel" onClick={handleConflictCancel}>
             取消
@@ -2534,6 +2536,7 @@ const MainWorkspace = ({ project, onClose }) => {
         footer={null}
         maskClosable={false}
         width={600}
+        zIndex={1000}
         className="merge-progress-modal"
       >
         <div style={{ padding: '20px 0' }}>
