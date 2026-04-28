@@ -614,6 +614,74 @@ function setupIpcHandlers() {
     return { success: true };
   });
 
+  ipcMain.handle('git-check-branch-name-conflict', async (event, branchName) => {
+    if (!currentGit) throw new Error('未打开项目');
+    try {
+      const result = await currentGit.raw(['ls-remote', '--heads', 'origin']);
+      const remoteBranches = result
+        .trim()
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+          const match = line.match(/refs\/heads\/(.+)$/);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean);
+
+      // 检查精确匹配
+      if (remoteBranches.includes(branchName)) {
+        return {
+          conflict: true,
+          type: 'exact',
+          conflictingBranch: branchName,
+          message: `远程已存在同名分支 ${branchName}`
+        };
+      }
+
+      // 检查父级前缀冲突：已有分支是待创建分支的前缀
+      // 例如：已存在 merge/lirs/develop，试图创建 merge/lirs/develop/MKR-1970
+      for (const remoteBranch of remoteBranches) {
+        if (branchName.startsWith(remoteBranch + '/')) {
+          return {
+            conflict: true,
+            type: 'parent_prefix',
+            conflictingBranch: remoteBranch,
+            message: `无法创建分支 ${branchName}，已有父级分支 ${remoteBranch} 存在（git 不允许分支路径互为前缀）`
+          };
+        }
+      }
+
+      // 检查子级前缀冲突：已有分支以待创建分支为前缀
+      // 例如：已存在 merge/lirs/develop/MKR-1970，试图创建 merge/lirs/develop
+      for (const remoteBranch of remoteBranches) {
+        if (remoteBranch.startsWith(branchName + '/')) {
+          return {
+            conflict: true,
+            type: 'child_prefix',
+            conflictingBranch: remoteBranch,
+            message: `无法创建分支 ${branchName}，已有子级分支 ${remoteBranch} 存在（git 不允许分支路径互为前缀）`
+          };
+        }
+      }
+
+      return { conflict: false };
+    } catch (error) {
+      console.error(`[git-check-branch-name-conflict] 检查失败: ${error.message}`);
+      return { conflict: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('git-fetch-branch', async (event, branchName) => {
+    if (!currentGit) throw new Error('未打开项目');
+    try {
+      await currentGit.raw(['fetch', 'origin', branchName]);
+      return { success: true };
+    } catch (error) {
+      console.error(`[git-fetch-branch] 拉取远程分支 ${branchName} 失败: ${error.message}`);
+      throw new Error(`拉取远程分支 ${branchName} 失败: ${error.message}`);
+    }
+  });
+
   ipcMain.handle('git-delete-local-branch', async (event, branchName, force = false) => {
     if (!currentGit) throw new Error('未打开项目');
     try {
@@ -703,12 +771,12 @@ function setupIpcHandlers() {
 
   ipcMain.handle('git-check-commits-in-branch', async (event, branch, commitSubjects) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-check-commits-in-branch] 通过commit信息检查提交是否存在: ${branch}`);
+    console.log(`[${timestamp}] [git-check-commits-in-branch] 通过commit信息检查提交是否存在: origin/${branch}`);
 
     if (!currentGit) throw new Error('未打开项目');
 
     try {
-      const logOutput = await currentGit.raw(['log', branch, '--format=%s', '-n', '5000']);
+      const logOutput = await currentGit.raw(['log', `origin/${branch}`, '--format=%s', '-n', '5000']);
       const existingSubjects = new Set(logOutput.split('\n').filter(Boolean));
 
       const result = {};

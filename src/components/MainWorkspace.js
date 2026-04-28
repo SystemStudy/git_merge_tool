@@ -418,6 +418,51 @@ const MainWorkspace = ({ project, onClose }) => {
     });
   }, []);
 
+  // 远程分支冲突时的三选项对话框：合并到已有分支 / 跳过 / 终止
+  const showMergeBranchConflictDialog = useCallback(async (branchName, conflictInfo) => {
+    const { type, conflictingBranch } = conflictInfo;
+    const isExactMatch = type === 'exact';
+
+    const description = isExactMatch
+      ? (<p>远程仓库已存在分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong>，是否需要将当前提交合并到已有分支？</p>)
+      : (<div>
+          <p>无法创建分支 <strong style={{ color: '#ff4d4f' }}>{branchName}</strong></p>
+          <p>因为已有分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong> 存在（git 不允许分支路径互为前缀），是否将当前提交合并到已有分支？</p>
+        </div>);
+
+    return await new Promise((resolve) => {
+      let actionResolved = false;
+      const onAction = (action) => {
+        if (actionResolved) return;
+        actionResolved = true;
+        destroy();
+        resolve(action);
+      };
+
+      const { destroy } = Modal.confirm({
+        title: '远程分支冲突',
+        width: 520,
+        content: description,
+        footer: (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button danger onClick={() => onAction('abort')}>
+              终止
+            </Button>
+            <Button onClick={() => onAction('skip')}>
+              跳过
+            </Button>
+            <Button type="primary" onClick={() => onAction('merge')}>
+              合并到已有分支
+            </Button>
+          </div>
+        ),
+        closable: true,
+        maskClosable: true,
+        onCancel: () => onAction('abort')
+      });
+    });
+  }, []);
+
   const handleOpenFile = async (filePath) => {
     const result = await window.electronAPI.system.openFileInEditor(filePath);
     if (!result.success) {
@@ -1112,27 +1157,72 @@ const MainWorkspace = ({ project, onClose }) => {
 
         // 使用新的分支命名格式
         const mergeBranchName = generateBranchName(targetBranch, issueNumber, username);
+        let actualBranchName = mergeBranchName; // 实际使用的分支名，冲突时可能使用已有分支
 
-        setMergeProgress(prev => ({
-          ...prev,
-          status: `创建分支: ${mergeBranchName}`
-        }));
+        console.log(`[${opTimestamp}] [handleCreateMergeBranch] 检查远程分支冲突: ${mergeBranchName}`);
+        const conflictCheck = await window.electronAPI.git.checkBranchNameConflict(mergeBranchName);
 
-        try {
-          await window.electronAPI.git.createBranch(mergeBranchName, `origin/${targetBranch}`);
-          // 记录创建的本地分支
-          createdBranches.push(mergeBranchName);
-          console.log(`[${opTimestamp}] [handleCreateMergeBranch] 记录创建的本地分支: ${mergeBranchName}`);
-        } catch (error) {
-          if (error.message.includes('fatal: A branch named')) {
-            console.log(`分支 ${mergeBranchName} 已存在，尝试直接切换`);
-            await window.electronAPI.git.checkout(mergeBranchName);
-            // 即使分支已存在，也记录用于清理（如果之前不是我们创建的）
-            if (!createdBranches.includes(mergeBranchName)) {
-              createdBranches.push(mergeBranchName);
-            }
+        let isExistingRemoteBranch = false;
+
+        if (conflictCheck.conflict) {
+          console.log(`[${opTimestamp}] [handleCreateMergeBranch] 远程分支冲突: ${conflictCheck.type}, 冲突分支: ${conflictCheck.conflictingBranch}`);
+          const userAction = await showMergeBranchConflictDialog(mergeBranchName, {
+            type: conflictCheck.type,
+            conflictingBranch: conflictCheck.conflictingBranch
+          });
+
+          if (userAction === 'merge') {
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择合并到已有分支: ${conflictCheck.conflictingBranch}`);
+            isExistingRemoteBranch = true;
+            actualBranchName = conflictCheck.conflictingBranch;
+            setMergeProgress(prev => ({
+              ...prev,
+              status: `拉取已有分支: ${actualBranchName}`
+            }));
+            await window.electronAPI.git.fetchBranch(actualBranchName);
+            await window.electronAPI.git.checkout(actualBranchName);
+            await window.electronAPI.git.pull(actualBranchName);
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 已切换到已有分支并拉取最新: ${actualBranchName}`);
+          } else if (userAction === 'skip') {
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择跳过分支 ${targetBranch}`);
+            results.push({
+              success: true,
+              targetBranch: targetBranch,
+              mergeBranch: mergeBranchName,
+              error: null,
+              skipped: true
+            });
+            continue;
           } else {
-            throw error;
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择终止操作`);
+            setMergeProgress(prev => ({ ...prev, status: '操作已终止' }));
+            message.error('操作已终止');
+            throw new Error('用户终止操作');
+          }
+        }
+
+        if (!isExistingRemoteBranch) {
+          setMergeProgress(prev => ({
+            ...prev,
+            status: `创建分支: ${mergeBranchName}`
+          }));
+
+          try {
+            await window.electronAPI.git.createBranch(mergeBranchName, `origin/${targetBranch}`);
+            // 记录创建的本地分支
+            createdBranches.push(mergeBranchName);
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 记录创建的本地分支: ${mergeBranchName}`);
+          } catch (error) {
+            if (error.message.includes('fatal: A branch named')) {
+              console.log(`分支 ${mergeBranchName} 已存在，尝试直接切换`);
+              await window.electronAPI.git.checkout(mergeBranchName);
+              // 即使分支已存在，也记录用于清理（如果之前不是我们创建的）
+              if (!createdBranches.includes(mergeBranchName)) {
+                createdBranches.push(mergeBranchName);
+              }
+            } else {
+              throw error;
+            }
           }
         }
 
@@ -1258,7 +1348,8 @@ const MainWorkspace = ({ project, onClose }) => {
             // 有实际合并内容，保存分支信息用于后续推送和创建MR
             branchInfos.push({
               targetBranch,
-              mergeBranchName,
+              mergeBranchName: actualBranchName,
+              intendedBranchName: mergeBranchName,
               index: i
             });
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] 第 ${currentOp}/${totalOperations} 个目标分支 cherry-pick 完成`);
@@ -1644,6 +1735,10 @@ const MainWorkspace = ({ project, onClose }) => {
       total: selectedTargetBranches.length,
       status: '正在准备检测变更...'
     });
+
+    // 先获取远程最新分支信息，确保对比的是远程最新状态
+    setChangeDetectProgress(prev => ({ ...prev, status: '正在获取远程分支最新信息...' }));
+    await window.electronAPI.git.fetch();
 
     // 无需 stash/checkout —— 只读操作，直接比较 commit message
     const results = [];
