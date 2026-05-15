@@ -2245,18 +2245,16 @@ const MainWorkspace = ({ project, onClose }) => {
               >
                 检测变更
               </Button>
-              {mergeType === 'release' && viewBranch !== 'develop' && (
-                <Button
-                  type="default"
-                  icon={<TagOutlined />}
-                  onClick={handleDetectVersion}
-                  loading={versionDetecting}
-                  disabled={selectedCommits.length !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
-                  style={{ marginLeft: 8 }}
-                >
-                  检测版本
-                </Button>
-              )}
+              <Button
+                type="default"
+                icon={<TagOutlined />}
+                onClick={handleDetectVersion}
+                loading={versionDetecting}
+                disabled={selectedCommits.length !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
+                style={{ marginLeft: 8 }}
+              >
+                检测版本
+              </Button>
             </div>
           </Card>
         </div>

@@ -1065,7 +1065,7 @@ function setupIpcHandlers() {
           target_branch: targetBranch,
           title: title,
           description: description,
-          should_remove_source_branch: removeSourceBranch
+          remove_source_branch: removeSourceBranch
         },
         {
           headers: { 'PRIVATE-TOKEN': token },
