@@ -743,16 +743,12 @@ const MainWorkspace = ({ project, onClose }) => {
 
     setLoading(true);
 
-    // 检查是否有未提交的更改，如果有则提示用户自行处理
+    // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
     if (hasUncommitted) {
-      setLoading(false);
-      Modal.warning({
-        title: '存在未提交的更改',
-        content: '当前项目存在未提交的更改，请先提交(commit)或暂存(stash)后再执行操作。',
-        okText: '知道了',
-      });
-      return;
+      console.log(`[${new Date().toISOString()}] [handleCherryPickAndPush] 检测到未提交的更改，自动 stash`);
+      await window.electronAPI.git.stashCreate('Git合并辅助工具自动暂存');
+      message.info('已自动暂存未提交的更改');
     }
 
     setCherryPickProgress({
@@ -1062,6 +1058,19 @@ const MainWorkspace = ({ project, onClose }) => {
       }));
     } finally {
       setLoading(false);
+      
+      // 如果之前自动 stash 了未提交的更改，现在恢复
+      if (hasUncommitted) {
+        console.log(`[${new Date().toISOString()}] [handleCherryPickAndPush] 恢复之前 stash 的更改`);
+        try {
+          await window.electronAPI.git.stashPop();
+          message.info('已恢复之前暂存的更改');
+        } catch (error) {
+          console.error(`[${new Date().toISOString()}] [handleCherryPickAndPush] 恢复 stash 失败:`, error);
+          message.warning('恢复暂存的更改失败，请手动处理');
+        }
+      }
+      
       await loadCurrentBranch();
       await loadCommits(viewBranch, true);
     }
@@ -1095,16 +1104,12 @@ const MainWorkspace = ({ project, onClose }) => {
 
     setLoading(true);
 
-    // 检查是否有未提交的更改
+    // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
     if (hasUncommitted) {
-      setLoading(false);
-      Modal.warning({
-        title: '存在未提交的更改',
-        content: '当前项目存在未提交的更改，请先提交(commit)或暂存(stash)后再执行操作。',
-        okText: '知道了',
-      });
-      return;
+      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 检测到未提交的更改，自动 stash`);
+      await window.electronAPI.git.stashCreate('Git合并辅助工具自动暂存');
+      message.info('已自动暂存未提交的更改');
     }
 
     setMergeProgress({
@@ -1534,6 +1539,19 @@ const MainWorkspace = ({ project, onClose }) => {
       }
       
       setLoading(false);
+      
+      // 如果之前自动 stash 了未提交的更改，现在恢复
+      if (hasUncommitted) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 恢复之前 stash 的更改`);
+        try {
+          await window.electronAPI.git.stashPop();
+          message.info('已恢复之前暂存的更改');
+        } catch (error) {
+          console.error(`[${new Date().toISOString()}] [handleCreateMergeBranch] 恢复 stash 失败:`, error);
+          message.warning('恢复暂存的更改失败，请手动处理');
+        }
+      }
+      
       await loadBranches();
       await loadCurrentBranch(); // 重新加载当前分支状态
     }
@@ -2469,7 +2487,7 @@ const MainWorkspace = ({ project, onClose }) => {
         open={conflictModal.visible}
         closable={false}
         maskClosable={false}
-        zIndex={1050}
+        zIndex={2000}
         footer={[
           <Button key="cancel" onClick={handleConflictCancel}>
             取消
