@@ -48,7 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // GitLab操作
   gitlab: {
     testToken: (serverUrl, token) => ipcRenderer.invoke('gitlab-test-token', serverUrl, token),
-    createMergeRequest: (serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch = true) => 
+    getProjectId: (serverUrl, token, projectPath) => ipcRenderer.invoke('gitlab-get-project-id', serverUrl, token, projectPath),
+    createMergeRequest: (serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch = true) =>
       ipcRenderer.invoke('gitlab-create-merge-request', serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch)
   },
 

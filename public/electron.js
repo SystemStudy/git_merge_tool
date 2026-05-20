@@ -1055,9 +1055,23 @@ function setupIpcHandlers() {
     }
   });
 
+  ipcMain.handle('gitlab-get-project-id', async (event, serverUrl, token, projectPath) => {
+    try {
+      const encodedPath = encodeURIComponent(projectPath);
+      const response = await axios.get(`${serverUrl}/api/v4/projects/${encodedPath}`, {
+        headers: { 'PRIVATE-TOKEN': token },
+        timeout: 10000
+      });
+      return { success: true, projectId: response.data.id };
+    } catch (error) {
+      console.error('[gitlab-get-project-id] 错误:', error.response?.data || error.message);
+      return { success: false, error: error.response?.data?.message || error.message };
+    }
+  });
+
   ipcMain.handle('gitlab-create-merge-request', async (event, serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch = true) => {
     try {
-      // projectId 已经从前端编码过，这里直接使用
+      // projectId 可以是数字 ID 或 URL 编码的项目路径
       const response = await axios.post(
         `${serverUrl}/api/v4/projects/${projectId}/merge_requests`,
         {

@@ -1408,7 +1408,26 @@ const MainWorkspace = ({ project, onClose }) => {
       }
       
       console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 项目路径: ${projectPath}`);
-      const projectId = encodeURIComponent(projectPath);
+
+      // 通过 GitLab API 获取项目的数字 ID
+      setMergeProgress(prev => ({
+        ...prev,
+        status: '正在获取项目信息...'
+      }));
+
+      const projectIdResult = await window.electronAPI.gitlab.getProjectId(
+        settings.gitlabServerUrl,
+        settings.gitlabAccessToken,
+        projectPath
+      );
+
+      if (!projectIdResult.success) {
+        console.error(`[${new Date().toISOString()}] [handleCreateMergeBranch] 获取项目ID失败:`, projectIdResult.error);
+        throw new Error(`获取项目ID失败: ${projectIdResult.error}`);
+      }
+
+      const projectId = projectIdResult.projectId;
+      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 项目数字ID: ${projectId}`);
 
       setMergeProgress(prev => ({
         ...prev,
