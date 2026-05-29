@@ -372,6 +372,11 @@ const MainWorkspace = ({ project, onClose }) => {
     selectedCommitsRef.current = new Set(selectedCommits);
   }, [selectedCommits]);
   
+  // 从 commits（分页）和 allCommits（搜索全量）两个数据源查找提交
+  const findCommitByHash = useCallback((hash) => {
+    return commits.find(c => c.hash === hash) || allCommits.find(c => c.hash === hash);
+  }, [commits, allCommits]);
+
   // 优化：使用 useCallback 缓存选择切换函数，并添加性能监控
   const toggleCommitSelection = useCallback((hash) => {
     const startTime = performance.now();
@@ -692,6 +697,17 @@ const MainWorkspace = ({ project, onClose }) => {
     }, 300);
     return () => clearTimeout(searchDebouncerRef.current);
   }, [searchText, viewBranch]);
+
+  const handleRefresh = async () => {
+    setSearchText('');
+    setShowMyCommits(false);
+    setAllCommits([]);
+    allCommitsLoadedRef.current = false;
+    if (viewBranch) {
+      await loadCommits(viewBranch, true);
+    }
+    message.success('刷新成功');
+  };
 
   const handleFetchOrigin = async () => {
     setFetchLoading(true);
@@ -1121,7 +1137,7 @@ const MainWorkspace = ({ project, onClose }) => {
     });
 
     // 提取问题单号
-    const selectedCommitsData = commits.filter(c => selectedCommits.includes(c.hash));
+    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
     const issueNumber = extractIssueNumber(selectedCommitsData);
     const username = currentUser.name || 'unknown';
 
@@ -1757,7 +1773,7 @@ const MainWorkspace = ({ project, onClose }) => {
     console.log(`[${timestamp}] [handleDetectChanges] 目标分支: ${selectedTargetBranches.join(', ')}`);
 
     // 获取选中提交的 commit message (subject line) 用于精确比对
-    const selectedCommitsData = commits.filter(c => selectedCommits.includes(c.hash));
+    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
     const commitSubjects = selectedCommitsData.map(c => c.message || '').filter(Boolean);
 
     if (commitSubjects.length === 0) {
@@ -1859,7 +1875,7 @@ const MainWorkspace = ({ project, onClose }) => {
       return;
     }
 
-    const selectedCommitData = commits.find(c => c.hash === selectedCommits[0]);
+    const selectedCommitData = findCommitByHash(selectedCommits[0]);
     if (!selectedCommitData || !selectedCommitData.message) {
       message.error('无法获取选中提交的信息');
       return;
@@ -2164,7 +2180,7 @@ const MainWorkspace = ({ project, onClose }) => {
               >
                 我的提交
               </Button>
-              <Button 
+              <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
                   setSearchText('');
@@ -2172,6 +2188,12 @@ const MainWorkspace = ({ project, onClose }) => {
                 }}
               >
                 清空
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleRefresh}
+              >
+                刷新
               </Button>
             </Space>
           </div>
@@ -2402,7 +2424,7 @@ const MainWorkspace = ({ project, onClose }) => {
                 }
                 
                 const firstCommitHash = selectedCommits[0];
-                const firstCommit = commits.find(c => c.hash === firstCommitHash);
+                const firstCommit = findCommitByHash(firstCommitHash);
                 const author = firstCommit?.author_name || '-';
                 const date = firstCommit?.date || '-';
                 const commitMessage = firstCommit?.message || '-';

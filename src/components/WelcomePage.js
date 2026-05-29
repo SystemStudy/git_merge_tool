@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Card,
   Button,
-  List,
   Typography,
   Space,
   Empty,
@@ -22,9 +20,7 @@ import {
   DeleteOutlined,
   SettingOutlined,
   BranchesOutlined,
-  PullRequestOutlined,
-  MergeOutlined,
-  GithubOutlined
+  SearchOutlined
 } from '@ant-design/icons';
 import './WelcomePage.css';
 
@@ -37,6 +33,7 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
   const [settings, setSettings] = useState({});
   const [testResult, setTestResult] = useState(null);
   const [form] = Form.useForm();
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     loadRecentProjects();
@@ -129,28 +126,21 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
     return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const features = [
-    {
-      icon: <BranchesOutlined />,
-      title: '可视化分支管理',
-      description: '直观查看和管理Git分支'
-    },
-    {
-      icon: <PullRequestOutlined />,
-      title: 'Cherry-pick操作',
-      description: '精确选择提交进行合并'
-    },
-    {
-      icon: <MergeOutlined />,
-      title: '自动创建合并请求',
-      description: '集成GitLab自动创建MR'
-    },
-    {
-      icon: <GithubOutlined />,
-      title: '智能冲突检测',
-      description: '提前检测合并冲突'
-    }
-  ];
+  const getParentPath = (fullPath) => {
+    if (!fullPath) return '';
+    const parts = fullPath.replace(/\\/g, '/').replace(/\/$/, '').split('/');
+    if (parts.length <= 1) return fullPath;
+    return parts[parts.length - 2];
+  };
+
+  const filteredProjects = recentProjects.filter((project) => {
+    if (!searchText.trim()) return true;
+    const keyword = searchText.trim().toLowerCase();
+    return (
+      project.name?.toLowerCase().includes(keyword) ||
+      project.path?.toLowerCase().includes(keyword)
+    );
+  });
 
   return (
     <div className="welcome-page">
@@ -164,105 +154,86 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
           </Text>
         </div>
 
-        <div className="welcome-main">
-          <div className="welcome-left">
-            <Card className="action-card">
-              <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                <Button
-                  type="primary"
-                  size="large"
-                  icon={<FolderOpenOutlined />}
-                  onClick={handleSelectDirectory}
-                  loading={loading}
-                  block
-                >
-                  选择项目目录
-                </Button>
-
-                <Button
-                  size="large"
-                  icon={<SettingOutlined />}
-                  onClick={() => setSettingsVisible(true)}
-                  block
-                >
-                  应用设置
-                </Button>
-
-                <Text type="secondary" style={{ textAlign: 'center', display: 'block' }}>
-                  从本地文件系统选择Git项目目录或配置应用设置
-                </Text>
-              </Space>
-            </Card>
+        <div className="welcome-projects-section">
+          <div className="welcome-projects-header">
+            <Space>
+              <HistoryOutlined />
+              <span className="welcome-projects-title">最近打开的项目</span>
+            </Space>
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="搜索项目..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+              style={{ width: 260 }}
+            />
           </div>
-
-          <div className="welcome-right">
-            <Card
-              className="recent-projects-card"
-              title={
-                <Space>
-                  <HistoryOutlined />
-                  <span>最近打开的项目</span>
-                </Space>
-              }
-            >
-              <Spin spinning={projectsLoading}>
-                {recentProjects.length > 0 ? (
-                  <List
-                    className="recent-projects-list"
-                    dataSource={recentProjects}
-                    renderItem={(project) => (
-                      <List.Item
-                        className="project-item"
-                        onClick={() => handleOpenProject(project.path)}
-                        actions={[
-                          <Popconfirm
-                            title="删除记录"
-                            description="确定要从记录中移除此项目吗？（不会删除本地文件）"
-                            onConfirm={(e) => handleRemoveProject(project.path, e)}
-                            okText="确定"
-                            cancelText="取消"
-                          >
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              删除
-                            </Button>
-                          </Popconfirm>
-                        ]}
+          <Spin spinning={projectsLoading}>
+            {filteredProjects.length > 0 ? (
+              <div className="recent-projects-grid">
+                {filteredProjects.map((project) => (
+                  <div
+                    key={project.path}
+                    className="project-card"
+                    onClick={() => handleOpenProject(project.path)}
+                  >
+                    <div className="project-card-header">
+                      <span className="project-card-name">{project.name}</span>
+                      <Tag color="blue">Git</Tag>
+                    </div>
+                    <Text type="secondary" className="project-card-path">
+                      {getParentPath(project.path)}
+                    </Text>
+                    <div className="project-card-footer">
+                      <Text type="secondary" className="project-card-time">
+                        {formatDate(project.lastOpened)}
+                      </Text>
+                      <Popconfirm
+                        title="删除记录"
+                        description="确定要从记录中移除此项目吗？"
+                        onConfirm={(e) => handleRemoveProject(project.path, e)}
+                        okText="确定"
+                        cancelText="取消"
                       >
-                        <List.Item.Meta
-                          title={
-                            <Space>
-                              <span className="project-name">{project.name}</span>
-                              <Tag color="blue">Git</Tag>
-                            </Space>
-                          }
-                          description={
-                            <div className="project-info">
-                              <Text type="secondary" ellipsis style={{ maxWidth: 300 }}>
-                                {project.path}
-                              </Text>
-                              <Text type="secondary" className="project-time">
-                                {formatDate(project.lastOpened)}
-                              </Text>
-                            </div>
-                          }
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => e.stopPropagation()}
                         />
-                      </List.Item>
-                    )}
-                  />
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="暂无最近打开的项目"
-                  />
-                )}
-              </Spin>
-            </Card>
-          </div>
+                      </Popconfirm>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={searchText ? '未找到匹配的项目' : '暂无最近打开的项目'}
+              />
+            )}
+          </Spin>
+        </div>
+
+        <div className="welcome-actions">
+          <Button
+            type="primary"
+            size="large"
+            icon={<FolderOpenOutlined />}
+            onClick={handleSelectDirectory}
+            loading={loading}
+          >
+            选择项目目录
+          </Button>
+          <Button
+            size="large"
+            icon={<SettingOutlined />}
+            onClick={() => setSettingsVisible(true)}
+          >
+            应用设置
+          </Button>
         </div>
       </div>
 

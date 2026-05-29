@@ -9,16 +9,19 @@
 
 .welcome-content {
   width: 100%;
-  max-width: 1200px;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
 }
 
 .welcome-header {
   text-align: center;
-  margin-bottom: 40px;
 }
 
 .welcome-title {
-  margin-bottom: 16px !important;
+  margin-bottom: 8px !important;
   color: #1890ff !important;
 }
 
@@ -27,114 +30,129 @@
 }
 
 .welcome-subtitle {
-  font-size: 16px;
+  font-size: 15px;
 }
 
-.welcome-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+/* 最近项目区域 */
+.welcome-projects-section {
+  width: 100%;
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  min-height: 200px;
 }
 
-.welcome-left {
+.welcome-projects-header {
   display: flex;
-  flex-direction: column;
-  gap: 24px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.welcome-right {
-  height: 100%;
-}
-
-.action-card {
-  text-align: center;
-}
-
-.action-card .ant-btn {
-  height: 48px;
+.welcome-projects-title {
   font-size: 16px;
+  font-weight: 600;
+  color: #262626;
 }
 
-.features-card {
-  flex: 1;
-}
-
-.features-grid {
+/* 项目卡片网格 */
+.recent-projects-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 16px;
 }
 
-.feature-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.project-card {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
   padding: 16px;
-  background: #f6ffed;
-  border-radius: 8px;
-  border: 1px solid #b7eb8f;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
 }
 
-.feature-icon {
-  font-size: 24px;
-  color: #52c41a;
+.project-card:hover {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.12);
+  transform: translateY(-2px);
 }
 
-.feature-content {
+.project-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.project-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #262626;
+  word-break: break-all;
   flex: 1;
 }
 
-.feature-title {
-  font-weight: 600;
-  color: #262626;
-  margin-bottom: 4px;
-}
-
-.feature-desc {
+.project-card-path {
   font-size: 12px;
   color: #8c8c8c;
+  word-break: break-all;
+  flex: 1;
 }
 
-.recent-projects-card {
-  height: 100%;
-  min-height: 400px;
-}
-
-.recent-projects-list {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.project-item {
-  cursor: pointer;
-  transition: background 0.2s;
-  border-radius: 4px;
-}
-
-.project-item:hover {
-  background: #f5f5f5;
-}
-
-.project-name {
-  font-weight: 500;
-}
-
-.project-info {
+.project-card-footer {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
 }
 
-.project-time {
-  font-size: 12px;
+.project-card-time {
+  font-size: 11px;
+  color: #bfbfbf;
 }
 
-@media (max-width: 968px) {
-  .welcome-main {
+/* 底部操作按钮 */
+.welcome-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.welcome-actions .ant-btn {
+  height: 48px;
+  font-size: 16px;
+  min-width: 180px;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .welcome-page {
+    padding: 20px;
+  }
+
+  .recent-projects-grid {
     grid-template-columns: 1fr;
   }
-  
-  .features-grid {
-    grid-template-columns: 1fr;
+
+  .welcome-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .welcome-actions .ant-btn {
+    min-width: auto;
+  }
+
+  .welcome-projects-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

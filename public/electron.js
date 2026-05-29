@@ -838,9 +838,9 @@ function setupIpcHandlers() {
         }
       }
 
-      // 只保留最新（日期最大）的一条匹配 tag
+      // 只保留最早（日期最小）的一条匹配 tag，即该提交首次出现的版本
       const allMatched = Array.from(tagMap.values());
-      allMatched.sort((a, b) => b.tagDate.localeCompare(a.tagDate));
+      allMatched.sort((a, b) => a.tagDate.localeCompare(b.tagDate));
       const matchedTag = allMatched.length > 0 ? allMatched[0] : null;
 
       // 获取分支当前最新的 V5.*.R.* tag（从分支顶端往前找）
