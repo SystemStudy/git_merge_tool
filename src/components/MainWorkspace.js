@@ -19,7 +19,8 @@ import {
   Alert,
   Tooltip,
   Spin,
-  Progress
+  Progress,
+  AutoComplete
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -34,7 +35,9 @@ import {
   CodeOutlined,
   CopyOutlined,
   WarningOutlined,
-  TagOutlined
+  TagOutlined,
+  PlusOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import './MainWorkspace.css';
 
@@ -143,7 +146,8 @@ const runPerformanceTest = (testName, fn, iterations = 10) => {
 const MERGE_TYPES = [
   { value: 'bug', label: 'bug提测' },
   { value: 'test', label: '提测' },
-  { value: 'release', label: '入库' }
+  { value: 'release', label: '入库' },
+  { value: 'custom', label: '指定分支合并' }
 ];
 
 // 优化的提交项组件 - 使用 memo 和直接调用避免额外渲染
@@ -315,6 +319,7 @@ const MainWorkspace = ({ project, onClose }) => {
   const [commits, setCommits] = useState([]);
   const [selectedCommits, setSelectedCommits] = useState([]);
   const [selectedTargetBranches, setSelectedTargetBranches] = useState([]);
+  const [customBranchInputs, setCustomBranchInputs] = useState(['']); // 指定分支合并模式的动态分支输入
   const [mergeType, setMergeType] = useState('bug');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
@@ -343,6 +348,16 @@ const MainWorkspace = ({ project, onClose }) => {
     }, 500);
     return () => clearTimeout(timer);
   }, [searchText]);
+
+  // custom 模式：自动将 customBranchInputs 同步到 selectedTargetBranches（去重、trim、去空）
+  useEffect(() => {
+    if (mergeType === 'custom') {
+      const validBranches = [...new Set(
+        customBranchInputs.map(b => b.trim()).filter(Boolean)
+      )];
+      setSelectedTargetBranches(validBranches);
+    }
+  }, [customBranchInputs, mergeType]);
 
   const [currentUser, setCurrentUser] = useState({ name: '', email: '' });
   const [hasMoreCommits, setHasMoreCommits] = useState(true);
@@ -423,16 +438,26 @@ const MainWorkspace = ({ project, onClose }) => {
     });
   }, []);
 
-  // 远程分支冲突时的三选项对话框：合并到已有分支 / 跳过 / 终止
+  // 生成随机分支名后缀（a-z, 0-9）
+  const generateRandomBranchSuffix = (length = 8) => {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
+  };
+
+  // 远程分支冲突时的五选项对话框：合并到已有分支 / 跳过 / 终止 / 删除远程并重建 / 生成新分支名
   const showMergeBranchConflictDialog = useCallback(async (branchName, conflictInfo) => {
     const { type, conflictingBranch } = conflictInfo;
     const isExactMatch = type === 'exact';
 
     const description = isExactMatch
-      ? (<p>远程仓库已存在分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong>，是否需要将当前提交合并到已有分支？</p>)
+      ? (<p>远程仓库已存在分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong>，请选择处理方式：</p>)
       : (<div>
           <p>无法创建分支 <strong style={{ color: '#ff4d4f' }}>{branchName}</strong></p>
-          <p>因为已有分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong> 存在（git 不允许分支路径互为前缀），是否将当前提交合并到已有分支？</p>
+          <p>因为已有分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong> 存在（git 不允许分支路径互为前缀），请选择处理方式：</p>
         </div>);
 
     return await new Promise((resolve) => {
@@ -446,18 +471,25 @@ const MainWorkspace = ({ project, onClose }) => {
 
       const { destroy } = Modal.confirm({
         title: '远程分支冲突',
-        width: 520,
+        width: 750,
+        bodyStyle: { padding: '20px 24px', minHeight: 100 },
         content: description,
         footer: (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button danger onClick={() => onAction('abort')}>
-              终止
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'nowrap', marginTop: 16 }}>
+            <Button type="primary" onClick={() => onAction('merge')}>
+              合并到已有分支
+            </Button>
+            <Button onClick={() => onAction('rename')}>
+              生成新分支名
             </Button>
             <Button onClick={() => onAction('skip')}>
               跳过
             </Button>
-            <Button type="primary" onClick={() => onAction('merge')}>
-              合并到已有分支
+            <Button danger onClick={() => onAction('delete-remote')}>
+              删除远程并重建
+            </Button>
+            <Button danger onClick={() => onAction('abort')}>
+              终止
             </Button>
           </div>
         ),
@@ -745,19 +777,32 @@ const MainWorkspace = ({ project, onClose }) => {
       return;
     }
     if (selectedTargetBranches.length === 0) {
-      message.warning('请选择目标分支');
+      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支' : '请选择目标分支');
       return;
+    }
+
+    setLoading(true);
+
+    // custom 模式：验证分支是否存在
+    let effectiveBranches = selectedTargetBranches;
+    if (mergeType === 'custom') {
+      const { valid, invalid } = await validateCustomBranches(selectedTargetBranches);
+      invalid.forEach(b => message.warning(`分支 "${b}" 不存在，已跳过`));
+      if (valid.length === 0) {
+        message.error('没有有效的目标分支，操作终止');
+        setLoading(false);
+        return;
+      }
+      effectiveBranches = valid;
     }
 
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [handleCherryPickAndPush] 开始遴选推送`);
     console.log(`[${timestamp}] [handleCherryPickAndPush] 选中的提交: ${selectedCommits.length}个`);
-    console.log(`[${timestamp}] [handleCherryPickAndPush] 目标分支: ${selectedTargetBranches.join(', ')}`);
+    console.log(`[${timestamp}] [handleCherryPickAndPush] 目标分支: ${effectiveBranches.join(', ')}`);
 
-    const totalOperations = selectedTargetBranches.length;
+    const totalOperations = effectiveBranches.length;
     const results = [];
-
-    setLoading(true);
 
     // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
@@ -777,9 +822,9 @@ const MainWorkspace = ({ project, onClose }) => {
 
     // 存储成功 cherry-pick 的分支，用于第二阶段推送
     const cherryPickedBranches = [];
+    const originalBranch = currentBranch;
 
     try {
-      const originalBranch = currentBranch;
 
       // 在循环开始前保存 selectedCommits 的副本，确保在循环期间不会被修改
       const commitsToCherryPick = [...selectedCommits];
@@ -787,9 +832,9 @@ const MainWorkspace = ({ project, onClose }) => {
 
       // ========== 第一阶段：对所有目标分支进行 cherry-pick ==========
       console.log(`[${new Date().toISOString()}] [handleCherryPickAndPush] ========== 第一阶段：Cherry-pick 到所有目标分支 ==========`);
-      
-      for (let i = 0; i < selectedTargetBranches.length; i++) {
-        const targetBranch = selectedTargetBranches[i];
+
+      for (let i = 0; i < effectiveBranches.length; i++) {
+        const targetBranch = effectiveBranches[i];
         const currentOp = i + 1;
         const opTimestamp = new Date().toISOString();
         
@@ -1029,14 +1074,6 @@ const MainWorkspace = ({ project, onClose }) => {
         }));
       }
 
-      // 切换回原始分支
-      setCherryPickProgress(prev => ({
-        ...prev,
-        status: '切换回原始分支...'
-      }));
-      
-      await window.electronAPI.git.checkout(originalBranch);
-
       const finalTimestamp = new Date().toISOString();
       console.log(`[${finalTimestamp}] [handleCherryPickAndPush] 所有操作完成`);
       console.log(`[${finalTimestamp}] [handleCherryPickAndPush] 结果统计:`, {
@@ -1073,8 +1110,17 @@ const MainWorkspace = ({ project, onClose }) => {
         visible: false
       }));
     } finally {
+      // 确保切回原始分支
+      if (originalBranch) {
+        try {
+          await window.electronAPI.git.checkout(originalBranch);
+        } catch (e) {
+          console.error('切回原始分支失败:', e);
+        }
+      }
+
       setLoading(false);
-      
+
       // 如果之前自动 stash 了未提交的更改，现在恢复
       if (hasUncommitted) {
         console.log(`[${new Date().toISOString()}] [handleCherryPickAndPush] 恢复之前 stash 的更改`);
@@ -1097,28 +1143,42 @@ const MainWorkspace = ({ project, onClose }) => {
     console.log(`[${timestamp}] [handleCreateMergeBranch] 开始创建合并分支`);
     console.log(`[${timestamp}] [handleCreateMergeBranch] 选中的提交: ${selectedCommits.length}个`);
     console.log(`[${timestamp}] [handleCreateMergeBranch] 目标分支: ${selectedTargetBranches.join(', ')}`);
-    
+
     if (selectedCommits.length === 0) {
       message.warning('请选择要合并的提交');
       return;
     }
     if (selectedTargetBranches.length === 0) {
-      message.warning('请选择目标分支');
+      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支' : '请选择目标分支');
       return;
+    }
+
+    setLoading(true);
+
+    // custom 模式：验证分支是否存在
+    let effectiveBranches = selectedTargetBranches;
+    if (mergeType === 'custom') {
+      const { valid, invalid } = await validateCustomBranches(selectedTargetBranches);
+      invalid.forEach(b => message.warning(`分支 "${b}" 不存在，已跳过`));
+      if (valid.length === 0) {
+        message.error('没有有效的目标分支，操作终止');
+        setLoading(false);
+        return;
+      }
+      effectiveBranches = valid;
     }
 
     if (!settings.gitlabServerUrl || !settings.gitlabAccessToken) {
       console.warn(`[${timestamp}] [handleCreateMergeBranch] GitLab配置缺失`);
       message.warning('请先配置GitLab服务器地址和访问令牌');
       setSettingsVisible(true);
+      setLoading(false);
       return;
     }
 
     const ts = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
-    const totalOperations = selectedTargetBranches.length;
+    const totalOperations = effectiveBranches.length;
     const results = [];
-
-    setLoading(true);
 
     // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
@@ -1161,9 +1221,9 @@ const MainWorkspace = ({ project, onClose }) => {
     try {
       // ========== 第一阶段：对所有目标分支进行 cherry-pick ==========
       console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] ========== 第一阶段：Cherry-pick 到所有目标分支 ==========`);
-      
-      for (let i = 0; i < selectedTargetBranches.length; i++) {
-        const targetBranch = selectedTargetBranches[i];
+
+      for (let i = 0; i < effectiveBranches.length; i++) {
+        const targetBranch = effectiveBranches[i];
         const currentOp = i + 1;
         const opTimestamp = new Date().toISOString();
         
@@ -1204,6 +1264,34 @@ const MainWorkspace = ({ project, onClose }) => {
             await window.electronAPI.git.checkout(actualBranchName);
             await window.electronAPI.git.pull(actualBranchName);
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] 已切换到已有分支并拉取最新: ${actualBranchName}`);
+          } else if (userAction === 'delete-remote') {
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择删除远程分支并重建: ${conflictCheck.conflictingBranch}`);
+            setMergeProgress(prev => ({
+              ...prev,
+              status: `删除远程分支: ${conflictCheck.conflictingBranch}`
+            }));
+            const deleteResult = await window.electronAPI.git.deleteRemoteBranch(conflictCheck.conflictingBranch);
+            if (!deleteResult.success) {
+              message.error(`删除远程分支失败: ${deleteResult.error}`);
+              throw new Error(`删除远程分支失败: ${deleteResult.error}`);
+            }
+            message.info(`已删除远程分支 ${conflictCheck.conflictingBranch}`);
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 远程分支已删除，继续创建新分支`);
+          } else if (userAction === 'rename') {
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择生成新分支名`);
+            setMergeProgress(prev => ({
+              ...prev,
+              status: '生成新分支名...'
+            }));
+            let newBranchName;
+            let newConflictCheck;
+            do {
+              newBranchName = `${mergeBranchName}.${generateRandomBranchSuffix()}`;
+              newConflictCheck = await window.electronAPI.git.checkBranchNameConflict(newBranchName);
+            } while (newConflictCheck.conflict);
+            actualBranchName = newBranchName;
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 已生成新分支名: ${actualBranchName}`);
+            message.info(`已生成新分支名: ${actualBranchName}`);
           } else if (userAction === 'skip') {
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择跳过分支 ${targetBranch}`);
             results.push({
@@ -1225,21 +1313,21 @@ const MainWorkspace = ({ project, onClose }) => {
         if (!isExistingRemoteBranch) {
           setMergeProgress(prev => ({
             ...prev,
-            status: `创建分支: ${mergeBranchName}`
+            status: `创建分支: ${actualBranchName}`
           }));
 
           try {
-            await window.electronAPI.git.createBranch(mergeBranchName, `origin/${targetBranch}`);
+            await window.electronAPI.git.createBranch(actualBranchName, `origin/${targetBranch}`);
             // 记录创建的本地分支
-            createdBranches.push(mergeBranchName);
-            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 记录创建的本地分支: ${mergeBranchName}`);
+            createdBranches.push(actualBranchName);
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 记录创建的本地分支: ${actualBranchName}`);
           } catch (error) {
             if (error.message.includes('fatal: A branch named')) {
-              console.log(`分支 ${mergeBranchName} 已存在，尝试直接切换`);
-              await window.electronAPI.git.checkout(mergeBranchName);
+              console.log(`分支 ${actualBranchName} 已存在，尝试直接切换`);
+              await window.electronAPI.git.checkout(actualBranchName);
               // 即使分支已存在，也记录用于清理（如果之前不是我们创建的）
-              if (!createdBranches.includes(mergeBranchName)) {
-                createdBranches.push(mergeBranchName);
+              if (!createdBranches.includes(actualBranchName)) {
+                createdBranches.push(actualBranchName);
               }
             } else {
               throw error;
@@ -1379,9 +1467,9 @@ const MainWorkspace = ({ project, onClose }) => {
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] ${targetBranch} 无需要合并的内容，清理合并分支`);
             try {
               await window.electronAPI.git.checkout(originalBranch);
-              await window.electronAPI.git.deleteLocalBranch(mergeBranchName, true);
+              await window.electronAPI.git.deleteLocalBranch(actualBranchName, true);
             } catch (e) {
-              console.log(`[${opTimestamp}] [handleCreateMergeBranch] 清理合并分支 ${mergeBranchName} 失败:`, e.message);
+              console.log(`[${opTimestamp}] [handleCreateMergeBranch] 清理合并分支 ${actualBranchName} 失败:`, e.message);
             }
             const shouldSkip = await new Promise((resolve) => {
               Modal.confirm({
@@ -1396,8 +1484,7 @@ const MainWorkspace = ({ project, onClose }) => {
             if (!shouldSkip) {
               setMergeProgress(prev => ({ ...prev, visible: false }));
               message.error('操作已终止');
-              setLoading(false);
-              return;
+              throw new Error('用户终止操作');
             }
           }
         }
@@ -1598,20 +1685,41 @@ const MainWorkspace = ({ project, onClose }) => {
       return;
     }
     if (selectedTargetBranches.length === 0) {
-      message.warning('请选择目标分支');
+      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支' : '请选择目标分支');
       return;
     }
-
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [handleDetectConflicts] 开始检测冲突`);
-    console.log(`[${timestamp}] [handleDetectConflicts] 选中的提交: ${selectedCommits.length}个`);
-    console.log(`[${timestamp}] [handleDetectConflicts] 目标分支: ${selectedTargetBranches.join(', ')}`);
 
     setConflictDetecting(true);
     setConflictProgress({
       visible: true,
       current: 0,
       total: selectedTargetBranches.length,
+      status: mergeType === 'custom' ? '正在验证分支...' : '正在准备检测冲突...'
+    });
+
+    // custom 模式：验证分支是否存在
+    let effectiveBranches = selectedTargetBranches;
+    if (mergeType === 'custom') {
+      const { valid, invalid } = await validateCustomBranches(selectedTargetBranches);
+      invalid.forEach(b => message.warning(`分支 "${b}" 不存在，已跳过`));
+      if (valid.length === 0) {
+        message.error('没有有效的目标分支，操作终止');
+        setConflictDetecting(false);
+        setConflictProgress(prev => ({ ...prev, visible: false }));
+        return;
+      }
+      effectiveBranches = valid;
+    }
+
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [handleDetectConflicts] 开始检测冲突`);
+    console.log(`[${timestamp}] [handleDetectConflicts] 选中的提交: ${selectedCommits.length}个`);
+    console.log(`[${timestamp}] [handleDetectConflicts] 目标分支: ${effectiveBranches.join(', ')}`);
+
+    setConflictProgress({
+      visible: true,
+      current: 0,
+      total: effectiveBranches.length,
       status: '正在准备检测冲突...'
     });
 
@@ -1626,18 +1734,18 @@ const MainWorkspace = ({ project, onClose }) => {
         await window.electronAPI.git.stashCreate('Git合并辅助冲突检测stash');
       }
 
-      for (let i = 0; i < selectedTargetBranches.length; i++) {
-        const targetBranch = selectedTargetBranches[i];
+      for (let i = 0; i < effectiveBranches.length; i++) {
+        const targetBranch = effectiveBranches[i];
         const opTimestamp = new Date().toISOString();
         const branchTs = Date.now();
         const tempBranchName = `test/${username}/${branchTs}`;
 
-        console.log(`[${opTimestamp}] [handleDetectConflicts] 检测分支 ${i + 1}/${selectedTargetBranches.length}: ${targetBranch}`);
+        console.log(`[${opTimestamp}] [handleDetectConflicts] 检测分支 ${i + 1}/${effectiveBranches.length}: ${targetBranch}`);
         console.log(`[${opTimestamp}] [handleDetectConflicts] 临时分支: ${tempBranchName}`);
 
         setConflictProgress(prev => ({
           ...prev,
-          status: `正在检测 ${i + 1}/${selectedTargetBranches.length}: ${targetBranch}`
+          status: `正在检测 ${i + 1}/${effectiveBranches.length}: ${targetBranch}`
         }));
 
         try {
@@ -1762,22 +1870,7 @@ const MainWorkspace = ({ project, onClose }) => {
       return;
     }
     if (selectedTargetBranches.length === 0) {
-      message.warning('请选择目标分支');
-      return;
-    }
-
-    const isSingleCommit = selectedCommits.length === 1;
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [handleDetectChanges] 开始检测变更`);
-    console.log(`[${timestamp}] [handleDetectChanges] 选中的提交: ${selectedCommits.length}个`);
-    console.log(`[${timestamp}] [handleDetectChanges] 目标分支: ${selectedTargetBranches.join(', ')}`);
-
-    // 获取选中提交的 commit message (subject line) 用于精确比对
-    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
-    const commitSubjects = selectedCommitsData.map(c => c.message || '').filter(Boolean);
-
-    if (commitSubjects.length === 0) {
-      message.error('无法获取选中提交的commit信息');
+      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支' : '请选择目标分支');
       return;
     }
 
@@ -1786,23 +1879,63 @@ const MainWorkspace = ({ project, onClose }) => {
       visible: true,
       current: 0,
       total: selectedTargetBranches.length,
+      status: mergeType === 'custom' ? '正在验证分支...' : '正在准备检测变更...'
+    });
+
+    // custom 模式：验证分支是否存在（内部已执行 git fetch）
+    let effectiveBranches = selectedTargetBranches;
+    if (mergeType === 'custom') {
+      const { valid, invalid } = await validateCustomBranches(selectedTargetBranches);
+      invalid.forEach(b => message.warning(`分支 "${b}" 不存在，已跳过`));
+      if (valid.length === 0) {
+        message.error('没有有效的目标分支，操作终止');
+        setChangeDetecting(false);
+        setChangeDetectProgress(prev => ({ ...prev, visible: false }));
+        return;
+      }
+      effectiveBranches = valid;
+    }
+
+    const isSingleCommit = selectedCommits.length === 1;
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [handleDetectChanges] 开始检测变更`);
+    console.log(`[${timestamp}] [handleDetectChanges] 选中的提交: ${selectedCommits.length}个`);
+    console.log(`[${timestamp}] [handleDetectChanges] 目标分支: ${effectiveBranches.join(', ')}`);
+
+    // 获取选中提交的 commit message (subject line) 用于精确比对
+    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
+    const commitSubjects = selectedCommitsData.map(c => c.message || '').filter(Boolean);
+
+    if (commitSubjects.length === 0) {
+      message.error('无法获取选中提交的commit信息');
+      setChangeDetecting(false);
+      setChangeDetectProgress(prev => ({ ...prev, visible: false }));
+      return;
+    }
+
+    setChangeDetectProgress({
+      visible: true,
+      current: 0,
+      total: effectiveBranches.length,
       status: '正在准备检测变更...'
     });
 
-    // 先获取远程最新分支信息，确保对比的是远程最新状态
-    setChangeDetectProgress(prev => ({ ...prev, status: '正在获取远程分支最新信息...' }));
-    await window.electronAPI.git.fetch();
+    // 先获取远程最新分支信息（custom 模式已在 validateCustomBranches 中 fetch，非 custom 模式需单独 fetch）
+    if (mergeType !== 'custom') {
+      setChangeDetectProgress(prev => ({ ...prev, status: '正在获取远程分支最新信息...' }));
+      await window.electronAPI.git.fetch();
+    }
 
     // 无需 stash/checkout —— 只读操作，直接比较 commit message
     const results = [];
 
     try {
-      for (let i = 0; i < selectedTargetBranches.length; i++) {
-        const targetBranch = selectedTargetBranches[i];
+      for (let i = 0; i < effectiveBranches.length; i++) {
+        const targetBranch = effectiveBranches[i];
 
         setChangeDetectProgress(prev => ({
           ...prev,
-          status: `正在检测 ${i + 1}/${selectedTargetBranches.length}: ${targetBranch}`
+          status: `正在检测 ${i + 1}/${effectiveBranches.length}: ${targetBranch}`
         }));
 
         try {
@@ -1982,9 +2115,35 @@ const MainWorkspace = ({ project, onClose }) => {
         return settings.releaseBranches?.split('\n').filter(Boolean) || [];
       case 'bug':
         return settings.bugTestBranches?.split('\n').filter(Boolean) || [];
+      case 'custom':
+        return customBranchInputs.map(b => b.trim()).filter(Boolean);
       default:
         return [];
     }
+  };
+
+  // 验证自定义分支是否存在，返回 { valid: string[], invalid: string[] }
+  const validateCustomBranches = async (branchNames) => {
+    await window.electronAPI.git.fetch();
+    const allBranches = await window.electronAPI.git.getBranches();
+
+    const valid = [];
+    const invalid = [];
+
+    for (const branch of branchNames) {
+      if (allBranches.includes(branch)) {
+        valid.push(branch);
+      } else {
+        try {
+          await window.electronAPI.git.fetchBranch(branch);
+          valid.push(branch);
+        } catch {
+          invalid.push(branch);
+        }
+      }
+    }
+
+    return { valid, invalid };
   };
 
   // 根据合并类型获取操作按钮
@@ -2005,12 +2164,36 @@ const MainWorkspace = ({ project, onClose }) => {
       );
     } else if (mergeType === 'release') {
       buttons.push(
-        <Button 
+        <Button
           key="create-branch"
-          type="primary" 
+          type="primary"
           icon={<BranchesOutlined />}
           onClick={handleCreateMergeBranch}
           loading={loading}
+        >
+          创建合并分支
+        </Button>
+      );
+    } else if (mergeType === 'custom') {
+      buttons.push(
+        <Button
+          key="cherry-pick-push"
+          type="primary"
+          icon={<CodeOutlined />}
+          onClick={handleCherryPickAndPush}
+          loading={loading}
+        >
+          遴选推送
+        </Button>
+      );
+      buttons.push(
+        <Button
+          key="create-branch"
+          type="primary"
+          icon={<BranchesOutlined />}
+          onClick={handleCreateMergeBranch}
+          loading={loading}
+          style={{ marginLeft: 8 }}
         >
           创建合并分支
         </Button>
@@ -2261,6 +2444,9 @@ const MainWorkspace = ({ project, onClose }) => {
                 onChange={(e) => {
                   setMergeType(e.target.value);
                   setSelectedTargetBranches([]);
+                  if (e.target.value === 'custom') {
+                    setCustomBranchInputs(['']);
+                  }
                 }}
                 className="merge-type-radio-group"
               >
@@ -2274,12 +2460,59 @@ const MainWorkspace = ({ project, onClose }) => {
 
             <div className="target-branches-section">
               <label className="section-label">目标分支:</label>
-              <Checkbox.Group
-                className="branches-checkbox-group"
-                options={getTargetBranches().map(b => ({ label: b, value: b }))}
-                value={selectedTargetBranches}
-                onChange={setSelectedTargetBranches}
-              />
+              {mergeType === 'custom' ? (
+                <div className="custom-branches-input-list">
+                  {customBranchInputs.map((value, index) => (
+                    <div key={index} className="custom-branch-input-row">
+                      <AutoComplete
+                        className="custom-branch-autocomplete"
+                        placeholder="输入分支名搜索..."
+                        value={value}
+                        options={branches
+                          .filter(b => b.toLowerCase().includes((value || '').toLowerCase()))
+                          .slice(0, 20)
+                          .map(b => ({ value: b, label: b }))
+                        }
+                        onChange={(val) => {
+                          const newInputs = [...customBranchInputs];
+                          newInputs[index] = val;
+                          setCustomBranchInputs(newInputs);
+                        }}
+                        onSelect={(val) => {
+                          const newInputs = [...customBranchInputs];
+                          newInputs[index] = val;
+                          setCustomBranchInputs(newInputs);
+                        }}
+                        allowClear
+                      />
+                      {customBranchInputs.length > 1 && (
+                        <Button
+                          type="text"
+                          danger
+                          icon={<CloseOutlined />}
+                          onClick={() => setCustomBranchInputs(prev => prev.filter((_, i) => i !== index))}
+                        />
+                      )}
+                      {index === customBranchInputs.length - 1 && (
+                        <Button
+                          type="dashed"
+                          icon={<PlusOutlined />}
+                          onClick={() => setCustomBranchInputs(prev => [...prev, ''])}
+                        >
+                          添加分支
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Checkbox.Group
+                  className="branches-checkbox-group"
+                  options={getTargetBranches().map(b => ({ label: b, value: b }))}
+                  value={selectedTargetBranches}
+                  onChange={setSelectedTargetBranches}
+                />
+              )}
             </div>
 
             <div className="action-buttons">
@@ -2304,16 +2537,18 @@ const MainWorkspace = ({ project, onClose }) => {
               >
                 检测变更
               </Button>
-              <Button
-                type="default"
-                icon={<TagOutlined />}
-                onClick={handleDetectVersion}
-                loading={versionDetecting}
-                disabled={selectedCommits.length !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
-                style={{ marginLeft: 8 }}
-              >
-                检测版本
-              </Button>
+              {mergeType !== 'custom' && (
+                <Button
+                  type="default"
+                  icon={<TagOutlined />}
+                  onClick={handleDetectVersion}
+                  loading={versionDetecting}
+                  disabled={selectedCommits.length !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
+                  style={{ marginLeft: 8 }}
+                >
+                  检测版本
+                </Button>
+              )}
             </div>
           </Card>
         </div>

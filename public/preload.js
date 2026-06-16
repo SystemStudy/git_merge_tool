@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     push: (branch) => ipcRenderer.invoke('git-push', branch),
     createBranch: (branchName, baseBranch) => ipcRenderer.invoke('git-create-branch', branchName, baseBranch),
     deleteLocalBranch: (branchName, force) => ipcRenderer.invoke('git-delete-local-branch', branchName, force),
+    deleteRemoteBranch: (branchName) => ipcRenderer.invoke('git-delete-remote-branch', branchName),
     hasUncommittedChanges: () => ipcRenderer.invoke('git-has-uncommitted-changes'),
     checkHasNewCommits: (targetBranch) => ipcRenderer.invoke('git-check-has-new-commits', targetBranch),
     stashCreate: (message) => ipcRenderer.invoke('git-stash-create', message),

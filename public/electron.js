@@ -700,6 +700,17 @@ function setupIpcHandlers() {
     }
   });
 
+  ipcMain.handle('git-delete-remote-branch', async (event, branchName) => {
+    if (!currentGit) throw new Error('未打开项目');
+    try {
+      await currentGit.push(['origin', '--delete', branchName]);
+      return { success: true };
+    } catch (error) {
+      console.error(`[git-delete-remote-branch] 删除远程分支 ${branchName} 失败:`, error.message);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('git-has-uncommitted-changes', async () => {
     if (!currentGit) throw new Error('未打开项目');
 
