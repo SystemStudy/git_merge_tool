@@ -66,8 +66,18 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
+      "icon": "assets/icon.ico",
       "publisherName": "蓝凌软件"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.developer-tools"
     },
     "nsis": {
       "oneClick": false,
