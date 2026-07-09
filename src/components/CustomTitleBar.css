@@ -1,0 +1,76 @@
+.custom-titlebar {
+  height: 40px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 16px;
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.titlebar-title {
+  color: #30415c;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.titlebar-project {
+  color: rgba(64, 82, 108, 0.85);
+  font-size: 13px;
+  margin-left: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.titlebar-spacer {
+  flex: 1;
+}
+
+/* 窗口控制按钮组 */
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #30415c;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+  transition: background-color 0.15s;
+}
+
+.titlebar-btn:hover {
+  background-color: #e8e8e8;
+}
+
+.titlebar-btn:active {
+  background-color: #d0d0d0;
+}
+
+/* 关闭按钮 hover 为红色 */
+.titlebar-btn-close:hover {
+  background-color: #e81123;
+  color: #ffffff;
+}
+
+.titlebar-btn-close:active {
+  background-color: #bf0f1d;
+  color: #ffffff;
+}

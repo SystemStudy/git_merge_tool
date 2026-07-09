@@ -20,7 +20,8 @@ import {
   Tooltip,
   Spin,
   Progress,
-  AutoComplete
+  AutoComplete,
+  Switch
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -37,9 +38,89 @@ import {
   WarningOutlined,
   TagOutlined,
   PlusOutlined,
-  CloseOutlined
+  CloseOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import './MainWorkspace.css';
+import { normalizeVersion, matchBranchVersion, decideDirection } from '../utils/versionBaseline';
+
+/**
+ * 遴选后跨版本基线替换 + squash into parent。
+ * 在 cherry-pick 全部成功、推送前调用。任意跳过条件均 return 不抛错，不阻断主流程。
+ * @param {Object} args
+ * @param {string} args.beforePickSha 遴选前 HEAD sha（forceSync/createBranch 后取）
+ * @param {string} args.targetBranch 目标分支名（用于匹配全局配置中的版本）
+ * @param {Function} [args.setProgress] 进度文案更新回调 (statusText) => void
+ * @param {string|null} args.currentV 源项目根 pom 归一化版本（遴选前读取，由调用方提供）
+ */
+async function applyBaselineReplacementAndSquash({ beforePickSha, targetBranch, setProgress, currentV }) {
+  const logTag = `[applyBaselineReplacementAndSquash:${targetBranch}]`;
+  try {
+    // 1. 全局配置
+    const globalCfg = await window.electronAPI.globalConfig.get();
+    const branchConfig = globalCfg && globalCfg.config && globalCfg.config.branch;
+    if (!branchConfig) {
+      console.warn(`${logTag} 全局配置缺失，跳过基线替换`);
+      return { skipped: 'no-config' };
+    }
+
+    // 2. 当前版本（由调用方在遴选前读源 pom 提供；假设 pom.xml 不在遴选改动里）
+    if (!currentV) {
+      console.warn(`${logTag} 未提供当前版本(源 pom 读取失败或无法归一化)，跳过`);
+      return { skipped: 'no-current-version' };
+    }
+
+    // 3. 目标版本（全局配置按分支名通配匹配）
+    const targetV = matchBranchVersion(targetBranch, branchConfig);
+    if (!targetV) {
+      console.warn(`${logTag} 匹配不到目标分支版本，跳过`);
+      return { skipped: 'no-target-version' };
+    }
+
+    // 4. 方向
+    const direction = decideDirection(currentV, targetV);
+    if (direction === 'skip') {
+      if (currentV === targetV) {
+        console.log(`${logTag} 版本一致(${currentV})，跳过`);
+        return { skipped: 'version-same' };
+      }
+      console.warn(`${logTag} 版本组合 ${currentV}→${targetV} 非两档替换，跳过`);
+      return { skipped: 'version-mismatch' };
+    }
+
+    // 5. 列出本次遴选改动的 .java 文件
+    const listRes = await window.electronAPI.git.listChangedJavaFiles(beforePickSha);
+    if (!listRes.success || !listRes.files || listRes.files.length === 0) {
+      console.log(`${logTag} 无 .java 改动文件，跳过`);
+      return { skipped: 'no-java-files' };
+    }
+
+    // 6. 进度提示 + 应用替换
+    if (setProgress) setProgress('检测到存在跨版本合并需要替换的内容，正在自动替换');
+    const rep = await window.electronAPI.git.applyVersionReplacement({ files: listRes.files, direction });
+    if (!rep.success) {
+      console.warn(`${logTag} 替换失败: ${rep.error}`);
+      return { skipped: 'replace-failed', error: rep.error };
+    }
+    if (!rep.changedFiles || rep.changedFiles.length === 0) {
+      console.log(`${logTag} 替换后无变化，跳过 squash`);
+      return { skipped: 'no-change' };
+    }
+
+    // 7. squash into parent（合并进最后一个遴选 commit）
+    const sq = await window.electronAPI.git.squashIntoParent({ beforePickSha });
+    if (!sq.success) {
+      message.warning(`跨版本替换已应用，但 squash 合并失败（已回退），将推送未压缩版本: ${sq.error}`);
+      return { skipped: 'squash-failed', error: sq.error };
+    }
+    console.log(`${logTag} 跨版本替换并 squash 成功: ${direction}, 改动 ${rep.changedFiles.length} 文件`);
+    return { success: true, direction, changedFiles: rep.changedFiles };
+  } catch (error) {
+    console.error(`${logTag} 异常: ${error.message}`);
+    message.warning(`跨版本替换异常: ${error.message}`);
+    return { skipped: 'exception', error: error.message };
+  }
+}
 
 const { Header, Content } = Layout;
 const { Search } = Input;
@@ -313,6 +394,175 @@ const CommitRow = ({ index, style, data }) => {
   );
 };
 
+// 判断单个文件是否多语言文件
+const isMultiLanguageFile = (filePath) => {
+  if (!filePath) return false;
+  // 前端: zh-CN.json, en-US.json 等 (<2-3字母>(-<2-4字母>)?.json)
+  const frontendPattern = /(^|[\/\\])[a-z]{2,3}(-[A-Z]{2,4})?\.json$/;
+  // 后端: ApplicationResources.properties
+  const backendPattern = /ApplicationResources\.properties$/;
+  return frontendPattern.test(filePath) || backendPattern.test(filePath);
+};
+
+// 判断是否所有冲突文件都是多语言文件
+const isMultiLanguageConflict = (files) => {
+  return files && files.length > 0 && files.every(f => isMultiLanguageFile(f));
+};
+
+// 解析 .properties 单行，返回 {key, value} 或 null（注释/空行/无等号行）
+const parsePropertiesLine = (line) => {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('!')) return null;
+  const eqIdx = trimmed.indexOf('=');
+  if (eqIdx === -1) return null;
+  return { key: trimmed.substring(0, eqIdx).trim(), value: trimmed.substring(eqIdx + 1).trim() };
+};
+
+// 检测 JSON 原文的缩进风格（用于序列化时保持原格式）
+const detectJsonIndent = (content) => {
+  const match = content.match(/\n([ \t]+)"/);
+  return match ? match[1] : '  ';
+};
+
+// 合并 .properties：以 ours 原文为基准，原样保留顺序/注释/空行/分组。
+// theirs 中新增的 key 不放文件末尾，而是按其在 theirs 中的相对位置，
+// 紧跟在它前一个 ours 已存在的 key（锚点）之后插入；无锚点者置于最前。
+// 同 key 值不同则记为冲突。
+const mergePropertiesContent = (ours, theirs) => {
+  const oursText = ours || '';
+  const theirsText = theirs || '';
+  const oursLines = oursText.split('\n');
+
+  // ours key -> 首次出现行索引
+  const oursKeyLineIndex = {};
+  const oursKeySet = new Set();
+  oursLines.forEach((line, idx) => {
+    const kv = parsePropertiesLine(line);
+    if (kv && !oursKeySet.has(kv.key)) {
+      oursKeySet.add(kv.key);
+      oursKeyLineIndex[kv.key] = idx;
+    }
+  });
+
+  // theirs 按顺序去重的 key 列表 + key -> 原行
+  const theirsOrder = [];
+  const theirsLineOf = {};
+  const theirsSeen = new Set();
+  for (const line of theirsText.split('\n')) {
+    const kv = parsePropertiesLine(line);
+    if (!kv || theirsSeen.has(kv.key)) continue;
+    theirsSeen.add(kv.key);
+    theirsOrder.push(kv.key);
+    theirsLineOf[kv.key] = line;
+  }
+
+  const conflicts = [];
+  const anchorToNew = {}; // anchorKey -> [newKey...]
+  const headNew = []; // 无锚点新增 key
+  for (let i = 0; i < theirsOrder.length; i++) {
+    const key = theirsOrder[i];
+    if (oursKeySet.has(key)) {
+      const oursKv = parsePropertiesLine(oursLines[oursKeyLineIndex[key]]);
+      const theirsKv = parsePropertiesLine(theirsLineOf[key]);
+      if (oursKv.value !== theirsKv.value) conflicts.push(key);
+      continue;
+    }
+    let anchor = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (oursKeySet.has(theirsOrder[j])) { anchor = theirsOrder[j]; break; }
+    }
+    if (anchor) {
+      if (!anchorToNew[anchor]) anchorToNew[anchor] = [];
+      anchorToNew[anchor].push(key);
+    } else {
+      headNew.push(key);
+    }
+  }
+  if (conflicts.length > 0) return { mergedContent: null, conflicts };
+
+  // 逐行输出 ours，遇到锚点 key 行时紧跟插入其新增项
+  const result = [];
+  for (let idx = 0; idx < oursLines.length; idx++) {
+    result.push(oursLines[idx]);
+    const kv = parsePropertiesLine(oursLines[idx]);
+    if (kv && oursKeyLineIndex[kv.key] === idx && anchorToNew[kv.key]) {
+      for (const nk of anchorToNew[kv.key]) result.push(theirsLineOf[nk]);
+    }
+  }
+  // 保留 ours 原文末尾换行状态，不强制追加换行
+  // （否则会把原本无末尾换行的最后一行误判为改动）
+  let mergedContent = result.join('\n');
+  if (headNew.length > 0) {
+    mergedContent = headNew.map(k => theirsLineOf[k]).join('\n') + '\n' + mergedContent;
+  }
+  return { mergedContent, conflicts: [] };
+};
+
+// 合并 .json：浅层合并顶层 key，保留 ours 顺序。theirs 新增 key 不放末尾，
+// 而是按其在 theirs 中的相对位置，紧跟在前一个 ours 已存在 key（锚点）之后插入；
+// 无锚点者置于最前。序列化沿用 ours 原文缩进。同 key 值不同则记为冲突。
+const mergeJsonContent = (ours, theirs) => {
+  let oursObj;
+  let theirsObj;
+  try {
+    oursObj = JSON.parse(ours || '{}');
+  } catch (e) {
+    console.error('[mergeJsonContent] ours JSON 解析失败:', e.message);
+    return { parseError: true };
+  }
+  try {
+    theirsObj = JSON.parse(theirs || '{}');
+  } catch (e) {
+    console.error('[mergeJsonContent] theirs JSON 解析失败:', e.message);
+    return { parseError: true };
+  }
+
+  const indent = detectJsonIndent(ours || '');
+  const oursKeys = Object.keys(oursObj);
+  const oursKeySet = new Set(oursKeys);
+  const theirsOrder = Object.keys(theirsObj);
+
+  const conflicts = [];
+  const anchorToNew = {};
+  const headNew = [];
+  for (let i = 0; i < theirsOrder.length; i++) {
+    const key = theirsOrder[i];
+    if (oursKeySet.has(key)) {
+      if (JSON.stringify(oursObj[key]) !== JSON.stringify(theirsObj[key])) conflicts.push(key);
+      continue;
+    }
+    let anchor = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (oursKeySet.has(theirsOrder[j])) { anchor = theirsOrder[j]; break; }
+    }
+    if (anchor) {
+      if (!anchorToNew[anchor]) anchorToNew[anchor] = [];
+      anchorToNew[anchor].push(key);
+    } else {
+      headNew.push(key);
+    }
+  }
+  if (conflicts.length > 0) return { mergedContent: null, conflicts };
+
+  const merged = {};
+  for (const k of headNew) merged[k] = theirsObj[k];
+  for (const ok of oursKeys) {
+    merged[ok] = oursObj[ok];
+    if (anchorToNew[ok]) for (const nk of anchorToNew[ok]) merged[nk] = theirsObj[nk];
+  }
+  // 保留 ours 原文末尾换行状态，避免把无末尾换行的文件误判为改动
+  const trailingNewline = (ours || '').endsWith('\n');
+  const mergedContent = JSON.stringify(merged, null, indent) + (trailingNewline ? '\n' : '');
+  return { mergedContent, conflicts: [] };
+};
+
+// 多语言文件合并入口：返回 { mergedContent, conflicts, parseError }
+const mergeMultiLanguageContent = (ours, theirs, filePath) => {
+  if (filePath.endsWith('.json')) return mergeJsonContent(ours, theirs);
+  if (filePath.endsWith('.properties')) return mergePropertiesContent(ours, theirs);
+  return { parseError: true };
+};
+
 const MainWorkspace = ({ project, onClose }) => {
   const [branches, setBranches] = useState([]);
   const [currentBranch, setCurrentBranch] = useState('');
@@ -377,7 +627,14 @@ const MainWorkspace = ({ project, onClose }) => {
   const [versionDetectProgress, setVersionDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
   const [versionDetectResultModal, setVersionDetectResultModal] = useState({ visible: false, results: [] });
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
+  const [conflictClaudeLoading, setConflictClaudeLoading] = useState(false);
+  const [conflictAutoMerging, setConflictAutoMerging] = useState(false);
   const conflictResolveRef = useRef(null);
+  // Claude 智能冲突对话 Modal：流式展示思考与返回值，用户确认后应用
+  const [claudeStreamModal, setClaudeStreamModal] = useState({
+    visible: false, loading: false, thinking: '', text: '', files: null, error: null
+  });
+  const claudeConfirmResolveRef = useRef(null);
   
   // 优化：使用 ref 存储 selectedCommits 的 Set 以提高查找性能
   const selectedCommitsRef = useRef(new Set());
@@ -521,6 +778,124 @@ const MainWorkspace = ({ project, onClose }) => {
   const handleConflictCancel = () => {
     conflictResolveRef.current?.('abort');
   };
+
+  // 多语言文件自动合并处理
+  const handleAutoMergeLanguageFiles = useCallback(async (targetBranch, sha, conflictedFiles) => {
+    message.info('检测到多语言文件冲突，正在执行自动合并操作');
+    setConflictAutoMerging(true);
+
+    try {
+      const versionsResult = await window.electronAPI.git.getConflictFileVersions(conflictedFiles);
+      if (!versionsResult.success) {
+        message.warning('无法获取冲突文件版本: ' + versionsResult.error);
+        return 'fallback';
+      }
+
+      const writeList = [];
+      for (const file of versionsResult.files) {
+        const result = mergeMultiLanguageContent(file.ours, file.theirs, file.path);
+
+        if (result.parseError) {
+          message.warning(`无法解析多语言文件 ${file.path}，切换到手动处理模式`);
+          return 'fallback';
+        }
+
+        if (result.conflicts.length > 0) {
+          message.warning(
+            `自动合并失败，以下 key 在两个分支的值不一致：${result.conflicts.slice(0, 5).join(', ')}${result.conflicts.length > 5 ? '...' : ''}`,
+            5
+          );
+          return 'fallback';
+        }
+
+        writeList.push({ path: file.path, content: result.mergedContent });
+      }
+
+      const writeResult = await window.electronAPI.git.writeFileAndStage(writeList);
+      if (!writeResult.success) {
+        message.warning('写入合并文件失败: ' + writeResult.error);
+        return 'fallback';
+      }
+
+      message.success('多语言文件自动合并完成');
+      return 'auto-success';
+    } catch (e) {
+      message.warning('自动合并出错: ' + e.message);
+      return 'fallback';
+    } finally {
+      setConflictAutoMerging(false);
+    }
+  }, []);
+
+  // Claude 智能冲突处理（流式，对话 Modal 展示思考与返回值，用户确认后应用）
+  const handleClaudeResolveConflicts = useCallback(async (targetBranch, conflictedFiles) => {
+    setConflictClaudeLoading(true);
+
+    try {
+      const contentResult = await window.electronAPI.git.getConflictFileContent(conflictedFiles);
+      if (!contentResult.success) {
+        message.error('无法读取冲突文件内容: ' + contentResult.error);
+        return 'claude-failed';
+      }
+
+      const params = {
+        files: contentResult.files,
+        projectName: project.name,
+        projectPath: project.path,
+        operation: `cherry-pick 到 ${targetBranch}`
+      };
+
+      // 打开对话 Modal，初始 loading
+      setClaudeStreamModal({ visible: true, loading: true, thinking: '', text: '', files: null, error: null });
+
+      // 注册流式监听，增量更新思考与返回内容
+      const offStream = window.electronAPI.claude.onResolveStream((chunk) => {
+        setClaudeStreamModal((prev) => {
+          if (chunk.type === 'thinking') return { ...prev, thinking: prev.thinking + chunk.data };
+          if (chunk.type === 'text') return { ...prev, text: prev.text + chunk.data };
+          return prev;
+        });
+      });
+
+      let claudeResult;
+      try {
+        claudeResult = await window.electronAPI.claude.resolveConflicts(params);
+      } finally {
+        offStream();
+      }
+
+      if (!claudeResult.success) {
+        // 展示错误，等待用户关闭后再回退到手动处理
+        setClaudeStreamModal((prev) => ({ ...prev, loading: false, error: claudeResult.error }));
+        await new Promise((resolve) => { claudeConfirmResolveRef.current = resolve; });
+        setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
+        return 'claude-failed';
+      }
+
+      // 成功：展示结果，等待用户选择「应用并继续」或「放弃」
+      setClaudeStreamModal((prev) => ({ ...prev, loading: false, files: claudeResult.files }));
+      const userChoice = await new Promise((resolve) => { claudeConfirmResolveRef.current = resolve; });
+      setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
+
+      if (userChoice === 'apply') {
+        const writeResult = await window.electronAPI.git.writeFileAndStage(claudeResult.files);
+        if (!writeResult.success) {
+          message.error('写入已解决文件失败: ' + writeResult.error);
+          return 'claude-failed';
+        }
+        message.success('智能冲突处理完成');
+        return 'claude-success';
+      }
+      // 放弃 → 回退到手动冲突处理
+      return 'claude-failed';
+    } catch (e) {
+      message.error('智能冲突处理出错: ' + e.message);
+      setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
+      return 'claude-failed';
+    } finally {
+      setConflictClaudeLoading(false);
+    }
+  }, [project.name, project.path]);
 
   // 加载初始数据
   useEffect(() => {
@@ -833,6 +1208,20 @@ const MainWorkspace = ({ project, onClose }) => {
       // ========== 第一阶段：对所有目标分支进行 cherry-pick ==========
       console.log(`[${new Date().toISOString()}] [handleCherryPickAndPush] ========== 第一阶段：Cherry-pick 到所有目标分支 ==========`);
 
+      // 读取当前项目根 pom.xml 的 parent.version 作为源版本基线（遴选前读取，假设 pom.xml 不在遴选改动里）
+      let sourceVersion = null;
+      try {
+        const sourcePom = await window.electronAPI.git.readPomParentVersion();
+        if (sourcePom.success) {
+          sourceVersion = normalizeVersion(sourcePom.version);
+          console.log(`[handleCherryPickAndPush] 源项目根 pom parent.version=${sourcePom.version} → 归一化 ${sourceVersion}`);
+        } else {
+          console.warn(`[handleCherryPickAndPush] 读取源 pom 失败(${sourcePom.error})，跨版本替换将跳过`);
+        }
+      } catch (e) {
+        console.warn(`[handleCherryPickAndPush] 读取源 pom 异常: ${e.message}`);
+      }
+
       for (let i = 0; i < effectiveBranches.length; i++) {
         const targetBranch = effectiveBranches[i];
         const currentOp = i + 1;
@@ -849,19 +1238,17 @@ const MainWorkspace = ({ project, onClose }) => {
 
         setCherryPickProgress(prev => ({
           ...prev,
-          status: `切换到分支: ${targetBranch}`
-        }));
-        
-        // 切换到目标分支
-        await window.electronAPI.git.checkout(targetBranch);
-
-        setCherryPickProgress(prev => ({
-          ...prev,
-          status: `拉取最新代码: ${targetBranch}`
+          status: `强制同步分支(以远程覆盖本地): ${targetBranch}`
         }));
 
-        // 拉取最新代码
-        await window.electronAPI.git.pull(targetBranch);
+        // 强制使用远程分支覆盖本地分支（远程不存在时跳过更新）
+        const syncResult = await window.electronAPI.git.forceSyncBranch(targetBranch);
+        if (syncResult.remoteExists === false) {
+          console.log(`[handleCherryPickAndPush] 远程分支不存在: origin/${targetBranch}，已跳过远程更新，继续使用本地分支`);
+        }
+
+        // 记录遴选前 HEAD sha，用于后续版本替换的文件 diff 范围与 squash 基点
+        const beforePickSha = (await window.electronAPI.git.getHeadSha()).sha;
 
         setCherryPickProgress(prev => ({
           ...prev,
@@ -887,13 +1274,47 @@ const MainWorkspace = ({ project, onClose }) => {
             console.log(`[${opTimestamp}] [handleCherryPickAndPush] commit ${sha.substring(0, 8)} 已存在，跳过`);
           } else if (singleResult.status === 'conflict') {
             console.log(`[${opTimestamp}] [handleCherryPickAndPush] commit ${sha.substring(0, 8)} 发生冲突`);
+            const conflictedFiles = singleResult.conflictedFiles || [];
+
+            // [新增] 多语言文件自动合并检测
+            if (isMultiLanguageConflict(conflictedFiles)) {
+              console.log(`[${opTimestamp}] [handleCherryPickAndPush] 检测到纯多语言文件冲突，尝试自动合并`);
+              const autoResult = await handleAutoMergeLanguageFiles(targetBranch, sha, conflictedFiles);
+              if (autoResult === 'auto-success') {
+                const continueResult = await window.electronAPI.git.cherryPickContinue();
+                if (continueResult.success) {
+                  hasCherryPickContent = true;
+                  continue; // 跳过手动冲突处理，继续下一个 commit
+                }
+                // 自动合并后 continue 失败
+                const choice = await showSkipAbortDialog(
+                  '自动合并后继续 cherry-pick 失败',
+                  <div>
+                    <p>多语言文件自动合并成功，但继续 cherry-pick 失败：{continueResult.error}</p>
+                    <p>请选择操作：</p>
+                  </div>
+                );
+                if (choice === 'abort') {
+                  setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                  setLoading(false);
+                  message.error('操作已终止');
+                  return;
+                } else {
+                  branchHasError = true;
+                  results.push({ success: false, targetBranch, error: continueResult.error, skipped: true });
+                }
+                continue;
+              }
+              // autoResult === 'fallback' → 继续走手动冲突处理
+              message.warning('多语言自动合并失败，切换到手动处理模式');
+            }
 
             // 显示冲突解决 modal，等待用户操作
             const userAction = await new Promise((resolve) => {
               conflictResolveRef.current = resolve;
               setConflictModal({
                 visible: true,
-                files: (singleResult.conflictedFiles || []).map(p => ({ path: p, resolved: false })),
+                files: conflictedFiles.map(p => ({ path: p, resolved: false })),
                 branch: targetBranch,
                 sha: sha
               });
@@ -902,7 +1323,83 @@ const MainWorkspace = ({ project, onClose }) => {
             // 关闭冲突 modal
             setConflictModal(prev => ({ ...prev, visible: false }));
 
-            if (userAction === 'confirm') {
+            if (userAction === 'claude-resolve') {
+              // [新增] Claude 智能冲突处理
+              const claudeResult = await handleClaudeResolveConflicts(targetBranch, conflictedFiles);
+              if (claudeResult === 'claude-success') {
+                const continueResult = await window.electronAPI.git.cherryPickContinue();
+                if (continueResult.success) {
+                  hasCherryPickContent = true;
+                } else {
+                  const choice = await showSkipAbortDialog(
+                    '智能处理后继续 cherry-pick 失败',
+                    <div>
+                      <p>智能冲突处理完成，但继续 cherry-pick 失败：{continueResult.error}</p>
+                      <p>请选择操作：</p>
+                    </div>
+                  );
+                  if (choice === 'abort') {
+                    setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                    setLoading(false);
+                    message.error('操作已终止');
+                    return;
+                  } else {
+                    branchHasError = true;
+                    results.push({ success: false, targetBranch, error: continueResult.error, skipped: true });
+                  }
+                }
+              } else {
+                // Claude 失败 → 重新打开 conflictModal 让用户手动处理
+                message.warning('智能处理失败，请手动解决冲突');
+                const retryAction = await new Promise((resolve) => {
+                  conflictResolveRef.current = resolve;
+                  setConflictModal({
+                    visible: true,
+                    files: conflictedFiles.map(p => ({ path: p, resolved: false })),
+                    branch: targetBranch,
+                    sha: sha
+                  });
+                });
+                setConflictModal(prev => ({ ...prev, visible: false }));
+
+                if (retryAction === 'confirm') {
+                  const continueResult = await window.electronAPI.git.cherryPickContinue();
+                  if (!continueResult.success) {
+                    const choice = await showSkipAbortDialog(
+                      '继续 cherry-pick 失败',
+                      <div><p>解决冲突后继续 cherry-pick 失败：{continueResult.error}</p><p>请选择操作：</p></div>
+                    );
+                    if (choice === 'abort') {
+                      setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                      setLoading(false);
+                      message.error('操作已终止');
+                      return;
+                    } else {
+                      branchHasError = true;
+                      results.push({ success: false, targetBranch, error: continueResult.error, skipped: true });
+                    }
+                  } else {
+                    hasCherryPickContent = true;
+                  }
+                } else {
+                  await window.electronAPI.git.cherryPickAbort();
+                  const choice = await showSkipAbortDialog(
+                    '已放弃冲突解决',
+                    <div><p>已放弃解决冲突，cherry-pick 已中止。</p><p>请选择操作：</p></div>
+                  );
+                  if (choice === 'abort') {
+                    setCherryPickProgress(prev => ({ ...prev, visible: false, status: '操作已终止' }));
+                    setLoading(false);
+                    message.error('操作已终止');
+                    return;
+                  } else {
+                    branchHasError = true;
+                    results.push({ success: false, targetBranch, error: '用户放弃冲突解决', skipped: true });
+                  }
+                }
+              }
+              setConflictClaudeLoading(false);
+            } else if (userAction === 'confirm') {
               // 用户确认已解决冲突 → 继续 cherry-pick
               const continueResult = await window.electronAPI.git.cherryPickContinue();
               if (!continueResult.success) {
@@ -989,6 +1486,13 @@ const MainWorkspace = ({ project, onClose }) => {
           // 通过 git 实际检查遴选后是否有新的提交
           const newCommitCheck = await window.electronAPI.git.checkHasNewCommits(targetBranch);
           if (newCommitCheck.hasNewCommits) {
+            // 跨版本基线替换 + squash（跳过条件均不阻断主流程）
+            await applyBaselineReplacementAndSquash({
+              beforePickSha,
+              targetBranch,
+              currentV: sourceVersion,
+              setProgress: (status) => setCherryPickProgress(prev => ({ ...prev, status }))
+            });
             // 有实际合并内容，记录该分支用于后续推送
             cherryPickedBranches.push(targetBranch);
             console.log(`[${opTimestamp}] [handleCherryPickAndPush] ${targetBranch} cherry-pick 成功`);
@@ -1222,6 +1726,20 @@ const MainWorkspace = ({ project, onClose }) => {
       // ========== 第一阶段：对所有目标分支进行 cherry-pick ==========
       console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] ========== 第一阶段：Cherry-pick 到所有目标分支 ==========`);
 
+      // 读取当前项目根 pom.xml 的 parent.version 作为源版本基线（遴选前读取，假设 pom.xml 不在遴选改动里）
+      let sourceVersion = null;
+      try {
+        const sourcePom = await window.electronAPI.git.readPomParentVersion();
+        if (sourcePom.success) {
+          sourceVersion = normalizeVersion(sourcePom.version);
+          console.log(`[handleCreateMergeBranch] 源项目根 pom parent.version=${sourcePom.version} → 归一化 ${sourceVersion}`);
+        } else {
+          console.warn(`[handleCreateMergeBranch] 读取源 pom 失败(${sourcePom.error})，跨版本替换将跳过`);
+        }
+      } catch (e) {
+        console.warn(`[handleCreateMergeBranch] 读取源 pom 异常: ${e.message}`);
+      }
+
       for (let i = 0; i < effectiveBranches.length; i++) {
         const targetBranch = effectiveBranches[i];
         const currentOp = i + 1;
@@ -1258,12 +1776,14 @@ const MainWorkspace = ({ project, onClose }) => {
             actualBranchName = conflictCheck.conflictingBranch;
             setMergeProgress(prev => ({
               ...prev,
-              status: `拉取已有分支: ${actualBranchName}`
+              status: `强制同步已有分支(以远程覆盖本地): ${actualBranchName}`
             }));
-            await window.electronAPI.git.fetchBranch(actualBranchName);
-            await window.electronAPI.git.checkout(actualBranchName);
-            await window.electronAPI.git.pull(actualBranchName);
-            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 已切换到已有分支并拉取最新: ${actualBranchName}`);
+            const syncResult = await window.electronAPI.git.forceSyncBranch(actualBranchName);
+            if (syncResult.remoteExists === false) {
+              console.log(`[handleCreateMergeBranch] 远程分支不存在: origin/${actualBranchName}，已跳过远程更新，继续使用本地分支`);
+            } else {
+              console.log(`[${opTimestamp}] [handleCreateMergeBranch] 已强制同步已有分支至远程最新: ${actualBranchName}`);
+            }
           } else if (userAction === 'delete-remote') {
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] 用户选择删除远程分支并重建: ${conflictCheck.conflictingBranch}`);
             setMergeProgress(prev => ({
@@ -1335,6 +1855,9 @@ const MainWorkspace = ({ project, onClose }) => {
           }
         }
 
+        // 记录遴选前 HEAD sha，用于后续版本替换的文件 diff 范围与 squash 基点
+        const beforePickSha = (await window.electronAPI.git.getHeadSha()).sha;
+
         setMergeProgress(prev => ({
           ...prev,
           status: `Cherry-pick 提交到: ${targetBranch}`
@@ -1358,12 +1881,43 @@ const MainWorkspace = ({ project, onClose }) => {
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] commit ${sha.substring(0, 8)} 已存在，跳过`);
           } else if (singleResult.status === 'conflict') {
             console.log(`[${opTimestamp}] [handleCreateMergeBranch] commit ${sha.substring(0, 8)} 发生冲突`);
+            const conflictedFiles = singleResult.conflictedFiles || [];
+
+            // [新增] 多语言文件自动合并检测
+            if (isMultiLanguageConflict(conflictedFiles)) {
+              console.log(`[${opTimestamp}] [handleCreateMergeBranch] 检测到纯多语言文件冲突，尝试自动合并`);
+              const autoResult = await handleAutoMergeLanguageFiles(targetBranch, sha, conflictedFiles);
+              if (autoResult === 'auto-success') {
+                const continueResult = await window.electronAPI.git.cherryPickContinue();
+                if (continueResult.success) {
+                  hasCherryPickContent = true;
+                  continue; // 跳过手动冲突处理，继续下一个 commit
+                }
+                const choice = await showSkipAbortDialog(
+                  '自动合并后继续 cherry-pick 失败',
+                  <div>
+                    <p>多语言文件自动合并成功，但继续 cherry-pick 失败：{continueResult.error}</p>
+                    <p>请选择操作：</p>
+                  </div>
+                );
+                if (choice === 'abort') {
+                  setMergeProgress(prev => ({ ...prev, status: '操作已终止' }));
+                  message.error('操作已终止');
+                  throw new Error('用户终止操作');
+                } else {
+                  branchHasError = true;
+                  results.push({ success: false, targetBranch, mergeBranch: mergeBranchName, error: continueResult.error, skipped: true });
+                }
+                continue;
+              }
+              message.warning('多语言自动合并失败，切换到手动处理模式');
+            }
 
             const userAction = await new Promise((resolve) => {
               conflictResolveRef.current = resolve;
               setConflictModal({
                 visible: true,
-                files: (singleResult.conflictedFiles || []).map(p => ({ path: p, resolved: false })),
+                files: conflictedFiles.map(p => ({ path: p, resolved: false })),
                 branch: targetBranch,
                 sha: sha
               });
@@ -1371,7 +1925,80 @@ const MainWorkspace = ({ project, onClose }) => {
 
             setConflictModal(prev => ({ ...prev, visible: false }));
 
-            if (userAction === 'confirm') {
+            if (userAction === 'claude-resolve') {
+              // [新增] Claude 智能冲突处理
+              const claudeResult = await handleClaudeResolveConflicts(targetBranch, conflictedFiles);
+              if (claudeResult === 'claude-success') {
+                const continueResult = await window.electronAPI.git.cherryPickContinue();
+                if (continueResult.success) {
+                  hasCherryPickContent = true;
+                } else {
+                  const choice = await showSkipAbortDialog(
+                    '智能处理后继续 cherry-pick 失败',
+                    <div>
+                      <p>智能冲突处理完成，但继续 cherry-pick 失败：{continueResult.error}</p>
+                      <p>请选择操作：</p>
+                    </div>
+                  );
+                  if (choice === 'abort') {
+                    setMergeProgress(prev => ({ ...prev, status: '操作已终止' }));
+                    message.error('操作已终止');
+                    throw new Error('用户终止操作');
+                  } else {
+                    branchHasError = true;
+                    results.push({ success: false, targetBranch, mergeBranch: mergeBranchName, error: continueResult.error, skipped: true });
+                  }
+                }
+              } else {
+                // Claude 失败 → 重新打开 conflictModal 让用户手动处理
+                message.warning('智能处理失败，请手动解决冲突');
+                const retryAction = await new Promise((resolve) => {
+                  conflictResolveRef.current = resolve;
+                  setConflictModal({
+                    visible: true,
+                    files: conflictedFiles.map(p => ({ path: p, resolved: false })),
+                    branch: targetBranch,
+                    sha: sha
+                  });
+                });
+                setConflictModal(prev => ({ ...prev, visible: false }));
+
+                if (retryAction === 'confirm') {
+                  const continueResult = await window.electronAPI.git.cherryPickContinue();
+                  if (!continueResult.success) {
+                    const choice = await showSkipAbortDialog(
+                      '继续 cherry-pick 失败',
+                      <div><p>解决冲突后继续 cherry-pick 失败：{continueResult.error}</p><p>请选择操作：</p></div>
+                    );
+                    if (choice === 'abort') {
+                      setMergeProgress(prev => ({ ...prev, status: '操作已终止' }));
+                      message.error('操作已终止');
+                      throw new Error('用户终止操作');
+                    } else {
+                      branchHasError = true;
+                      results.push({ success: false, targetBranch, mergeBranch: mergeBranchName, error: continueResult.error, skipped: true });
+                    }
+                  } else {
+                    hasCherryPickContent = true;
+                  }
+                } else {
+                  await window.electronAPI.git.cherryPickAbort();
+                  const choice = await showSkipAbortDialog(
+                    '已放弃冲突解决',
+                    <div><p>已放弃解决冲突，cherry-pick 已中止。</p><p>请选择操作：</p></div>
+                  );
+                  if (choice === 'abort') {
+                    setMergeProgress(prev => ({ ...prev, status: '操作已终止' }));
+                    message.error('操作已终止');
+                    throw new Error('用户终止操作');
+                  } else {
+                    branchHasError = true;
+                    results.push({ success: false, targetBranch, mergeBranch: mergeBranchName, error: '用户放弃冲突解决', skipped: true });
+                  }
+                }
+              }
+              setConflictClaudeLoading(false);
+            } else if (userAction === 'confirm') {
               const continueResult = await window.electronAPI.git.cherryPickContinue();
               if (!continueResult.success) {
                 const choice = await showSkipAbortDialog(
@@ -1454,6 +2081,13 @@ const MainWorkspace = ({ project, onClose }) => {
           // 通过 git 实际检查遴选后是否有新的提交
           const newCommitCheck = await window.electronAPI.git.checkHasNewCommits(targetBranch);
           if (newCommitCheck.hasNewCommits) {
+            // 跨版本基线替换 + squash（跳过条件均不阻断主流程）
+            await applyBaselineReplacementAndSquash({
+              beforePickSha,
+              targetBranch,
+              currentV: sourceVersion,
+              setProgress: (status) => setMergeProgress(prev => ({ ...prev, status }))
+            });
             // 有实际合并内容，保存分支信息用于后续推送和创建MR
             branchInfos.push({
               targetBranch,
@@ -1749,8 +2383,11 @@ const MainWorkspace = ({ project, onClose }) => {
         }));
 
         try {
-          await window.electronAPI.git.checkout(targetBranch);
-          await window.electronAPI.git.pull(targetBranch);
+          // 强制使用远程分支覆盖本地分支（远程不存在时跳过更新）
+          const syncResult = await window.electronAPI.git.forceSyncBranch(targetBranch);
+          if (syncResult.remoteExists === false) {
+            console.log(`[handleDetectConflicts] 远程分支不存在: origin/${targetBranch}，已跳过远程更新，继续使用本地分支`);
+          }
 
           await window.electronAPI.git.createBranch(tempBranchName, `origin/${targetBranch}`);
           await window.electronAPI.git.checkout(tempBranchName);
@@ -2757,6 +3394,47 @@ const MainWorkspace = ({ project, onClose }) => {
         </div>
       </Modal>
 
+      {/* Claude 智能冲突对话 Modal：流式展示思考与返回值，用户确认后应用 */}
+      <Modal
+        title="智能冲突解决"
+        open={claudeStreamModal.visible}
+        closable={!claudeStreamModal.loading}
+        maskClosable={false}
+        zIndex={2100}
+        width={720}
+        footer={
+          claudeStreamModal.loading
+            ? null
+            : claudeStreamModal.error
+              ? [<Button key="close" onClick={() => claudeConfirmResolveRef.current?.('cancel')}>关闭</Button>]
+              : [
+                  <Button key="cancel" onClick={() => claudeConfirmResolveRef.current?.('cancel')}>放弃</Button>,
+                  <Button key="apply" type="primary" onClick={() => claudeConfirmResolveRef.current?.('apply')}>应用并继续</Button>
+                ]
+        }
+      >
+        <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+          {claudeStreamModal.thinking && (
+            <details open style={{ marginBottom: 12, background: '#fafafa', padding: '8px 12px', borderRadius: 6 }}>
+              <summary style={{ cursor: 'pointer', color: '#888', fontWeight: 500 }}>模型思考</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '8px 0 0', fontSize: 12, color: '#666' }}>{claudeStreamModal.thinking}</pre>
+            </details>
+          )}
+          <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: 6 }}>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>返回内容</div>
+            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, fontSize: 13 }}>{claudeStreamModal.text}{claudeStreamModal.loading ? '▍' : ''}</pre>
+          </div>
+          {claudeStreamModal.loading && (
+            <div style={{ textAlign: 'center', marginTop: 16, color: '#888' }}>
+              <Spin size="small" /> <span style={{ marginLeft: 8 }}>模型思考中...</span>
+            </div>
+          )}
+          {claudeStreamModal.error && (
+            <Alert type="error" message="处理失败" description={claudeStreamModal.error} style={{ marginTop: 12 }} />
+          )}
+        </div>
+      </Modal>
+
       {/* 冲突解决Modal */}
       <Modal
         title="使用外部应用解决冲突"
@@ -2817,10 +3495,29 @@ const MainWorkspace = ({ project, onClose }) => {
               </Space>
             </div>
           ))}
-        </div>
-      </Modal>
+            {/* 智能冲突处理按钮区域 */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+                或使用 AI 自动解决冲突
+              </div>
+              <Button
+                type="default"
+                icon={<CodeOutlined />}
+                loading={conflictClaudeLoading}
+                onClick={() => conflictResolveRef.current?.('claude-resolve')}
+              >
+                智能冲突处理
+              </Button>
+              {conflictClaudeLoading && (
+                <div style={{ marginTop: 12 }}>
+                  <Spin tip="AI 正在分析并解决冲突..." />
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
 
-      {/* 遴选推送进度条Modal */}
+        {/* 遴选推送进度条Modal */}
       <Modal
         title="遴选推送"
         open={cherryPickProgress.visible}
@@ -3362,7 +4059,62 @@ const MainWorkspace = ({ project, onClose }) => {
 // 设置表单组件
 const SettingsForm = ({ settings, onSave }) => {
   const [form] = Form.useForm();
+  // 监听当前选中的模型，确保其始终出现在下拉选项中（避免选中值不在列表时显示为空）
+  const claudeModelValue = Form.useWatch('claudeModel', form);
   const [testResult, setTestResult] = useState(null);
+  // Claude 设置相关状态
+  const [claudeUseLocal, setClaudeUseLocal] = useState(settings.claudeUseLocalConfig ?? true);
+  const [claudeLoading, setClaudeLoading] = useState(false);
+  const [claudeLocalApiUrl, setClaudeLocalApiUrl] = useState('');
+  const [claudeLocalApiKey, setClaudeLocalApiKey] = useState('');
+  const [claudeLocalModels, setClaudeLocalModels] = useState([]);
+  const [claudeTestResult, setClaudeTestResult] = useState(null);
+  const [claudeFetchedModels, setClaudeFetchedModels] = useState([]);
+  const [claudeFetchingModels, setClaudeFetchingModels] = useState(false);
+  const [claudeTesting, setClaudeTesting] = useState(false);
+  const [claudeSupports1M, setClaudeSupports1M] = useState(settings.claudeModelSupports1M ?? false);
+  const [claudeModelsMeta, setClaudeModelsMeta] = useState({}); // { modelName: true } 表示支持1M
+
+  // 初始化：如果开关ON，读取本地配置
+  useEffect(() => {
+    if (settings.claudeUseLocalConfig) {
+      loadLocalClaudeConfig();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadLocalClaudeConfig = async () => {
+    setClaudeLoading(true);
+    try {
+      const result = await window.electronAPI.claude.readLocalConfig();
+      if (result.success && result.config.exists) {
+        setClaudeLocalApiUrl(result.config.apiUrl);
+        setClaudeLocalApiKey(result.config.apiKey);
+        setClaudeLocalModels(result.config.models);
+        setClaudeModelsMeta(result.config.modelsMeta || {});
+        // 如果表单中没有已选模型，优先用配置文件已保存的模型，否则用本地配置的默认值
+        if (!form.getFieldValue('claudeModel')) {
+          const savedModel = settings.claudeModel;
+          if (savedModel) {
+            form.setFieldsValue({ claudeModel: savedModel });
+            setClaudeSupports1M(settings.claudeModelSupports1M ?? false);
+          } else if (result.config.model) {
+            form.setFieldsValue({ claudeModel: result.config.model });
+            setClaudeSupports1M(result.config.modelSupports1M ?? false);
+          }
+        }
+        setClaudeUseLocal(true);
+        message.success('已读取本地 Claude 配置');
+      } else {
+        message.warning('当前系统未检测到 Claude 配置，请手动填写');
+        setClaudeUseLocal(false);
+      }
+    } catch (e) {
+      message.error('读取本地配置失败: ' + e.message);
+      setClaudeUseLocal(false);
+    } finally {
+      setClaudeLoading(false);
+    }
+  };
 
   const handleTestToken = async () => {
     const values = form.getFieldsValue();
@@ -3387,12 +4139,95 @@ const SettingsForm = ({ settings, onSave }) => {
     }
   };
 
+  // 获取当前有效的 API 参数（开关ON用本地配置，OFF用表单值）
+  const getCurrentApiParams = () => {
+    if (claudeUseLocal) {
+      return {
+        apiUrl: claudeLocalApiUrl,
+        apiKey: claudeLocalApiKey,
+        model: form.getFieldValue('claudeModel')
+      };
+    }
+    return {
+      apiUrl: form.getFieldValue('claudeApiUrl'),
+      apiKey: form.getFieldValue('claudeApiKey'),
+      model: form.getFieldValue('claudeModel')
+    };
+  };
+
+  const handleClaudeTestConnection = async () => {
+    const { apiUrl, apiKey, model } = getCurrentApiParams();
+    if (!apiUrl || !apiKey) {
+      message.warning('请先配置 API 地址和 Key');
+      return;
+    }
+    setClaudeTesting(true);
+    try {
+      const result = await window.electronAPI.claude.testConnection(apiUrl, apiKey, model);
+      setClaudeTestResult(result);
+      if (result.success) {
+        message.success('Claude 连接测试成功');
+      } else {
+        message.error(result.error);
+      }
+    } catch (e) {
+      setClaudeTestResult({ success: false, error: e.message });
+      message.error('测试连接失败: ' + e.message);
+    } finally {
+      setClaudeTesting(false);
+    }
+  };
+
+  const handleClaudeFetchModels = async () => {
+    const { apiUrl, apiKey } = getCurrentApiParams();
+    if (!apiUrl || !apiKey) {
+      message.warning('请先配置 API 地址和 Key');
+      return;
+    }
+    setClaudeFetchingModels(true);
+    try {
+      const result = await window.electronAPI.claude.fetchModels(apiUrl, apiKey);
+      if (result.success) {
+        setClaudeFetchedModels(result.models);
+        if (result.modelsMeta) setClaudeModelsMeta(prev => ({ ...prev, ...result.modelsMeta }));
+        message.success(`获取到 ${result.models.length} 个模型`);
+      } else if (result.notSupported) {
+        message.info('当前 API 服务不支持获取模型列表，请手动输入模型名称');
+      } else {
+        message.error(result.error);
+      }
+    } catch (e) {
+      message.error('获取模型列表失败: ' + e.message);
+    } finally {
+      setClaudeFetchingModels(false);
+    }
+  };
+
+  // 保存时：开关ON不存储apiUrl/apiKey
+  const handleFinish = (values) => {
+    // 以现有 settings 为底合并表单值，避免未在表单中出现的字段（如分支预设）被清空
+    const newSettings = { ...settings, ...values };
+
+    if (claudeUseLocal) {
+      newSettings.claudeUseLocalConfig = true;
+      delete newSettings.claudeApiUrl;
+      delete newSettings.claudeApiKey;
+    } else {
+      newSettings.claudeUseLocalConfig = false;
+    }
+
+    // 保存 1M 标记
+    newSettings.claudeModelSupports1M = claudeSupports1M;
+
+    onSave(newSettings);
+  };
+
   return (
     <Form
       form={form}
       layout="vertical"
       initialValues={settings}
-      onFinish={onSave}
+      onFinish={handleFinish}
     >
       <Tabs items={[
         {
@@ -3448,6 +4283,126 @@ const SettingsForm = ({ settings, onSave }) => {
               >
                 <Input.TextArea rows={4} />
               </Form.Item>
+            </>
+          )
+        },
+        {
+          key: 'claude',
+          label: 'Claude设置',
+          children: (
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <Space align="center">
+                  <span style={{ fontWeight: 500 }}>读取本地Claude配置</span>
+                  <Switch
+                    checked={claudeUseLocal}
+                    loading={claudeLoading}
+                    onChange={async (checked) => {
+                      if (checked) {
+                        await loadLocalClaudeConfig();
+                      } else {
+                        setClaudeUseLocal(false);
+                      }
+                    }}
+                  />
+                </Space>
+                <div style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+                  开启后自动读取 ~/.claude/settings.json 和环境变量，API地址和Key不存储到本地
+                </div>
+              </div>
+
+              <Form.Item
+                label="Claude API 地址"
+                name={claudeUseLocal ? undefined : 'claudeApiUrl'}
+              >
+                <Input
+                  value={claudeUseLocal ? claudeLocalApiUrl : undefined}
+                  placeholder="https://api.anthropic.com"
+                  disabled={claudeUseLocal}
+                  suffix={claudeUseLocal ? <LockOutlined style={{ color: '#999' }} /> : null}
+                  onChange={!claudeUseLocal ? (e) => form.setFieldsValue({ claudeApiUrl: e.target.value }) : undefined}
+                />
+              </Form.Item>
+
+              <Form.Item
+                label="Claude API Key"
+                name={claudeUseLocal ? undefined : 'claudeApiKey'}
+              >
+                <Input.Password
+                  value={claudeUseLocal ? claudeLocalApiKey : undefined}
+                  placeholder="输入 API Key"
+                  disabled={claudeUseLocal}
+                  suffix={claudeUseLocal ? <LockOutlined style={{ color: '#999' }} /> : null}
+                  onChange={!claudeUseLocal ? (e) => form.setFieldsValue({ claudeApiKey: e.target.value }) : undefined}
+                />
+              </Form.Item>
+
+              {/* 模型名称 + 1M 复选框 */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <Form.Item label="模型名称" name="claudeModel" style={{ flex: 1, marginBottom: 0 }}>
+                  {claudeUseLocal ? (
+                    <Select
+                      placeholder="选择模型"
+                      options={[...new Set([...claudeLocalModels, ...claudeFetchedModels, claudeModelValue].filter(Boolean))].map(m => ({ label: m, value: m }))}
+                      onChange={(value) => {
+                        // 如果选中的模型在本地配置中标记了 [1m]，自动勾选
+                        if (claudeModelsMeta[value]) {
+                          setClaudeSupports1M(true);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <AutoComplete
+                      placeholder="输入或选择模型"
+                      options={[...new Set([...claudeLocalModels, ...claudeFetchedModels, claudeModelValue].filter(Boolean))].map(m => ({ label: m, value: m }))}
+                      filterOption={(inputValue, option) =>
+                        option.label.toLowerCase().includes(inputValue.toLowerCase())
+                      }
+                    />
+                  )}
+                </Form.Item>
+                <div style={{ paddingTop: 0 }}>
+                  <div style={{ height: 22, display: 'flex', alignItems: 'flex-end', paddingBottom: 8, fontSize: 14, color: 'rgba(0,0,0,0.88)' }}>
+                    声明支持 1M
+                  </div>
+                  <Checkbox
+                    checked={claudeSupports1M}
+                    onChange={(e) => setClaudeSupports1M(e.target.checked)}
+                  >
+                    1M
+                  </Checkbox>
+                </div>
+              </div>
+
+              <Form.Item>
+                <Space>
+                  <Button onClick={handleClaudeTestConnection} loading={claudeTesting}>测试连接</Button>
+                  <Button
+                    onClick={handleClaudeFetchModels}
+                    loading={claudeFetchingModels}
+                    icon={<DownloadOutlined />}
+                  >
+                    获取模型列表
+                  </Button>
+                </Space>
+              </Form.Item>
+
+              {claudeTestResult && (
+                <Alert
+                  style={{ marginBottom: 12 }}
+                  type={claudeTestResult.success ? 'success' : 'error'}
+                  message={claudeTestResult.success ? '连接成功' : '连接失败'}
+                  description={claudeTestResult.success
+                    ? `模型: ${claudeTestResult.model}`
+                    : claudeTestResult.error}
+                />
+              )}
+
+              <Alert
+                type="info"
+                message="支持 Anthropic 官方 API 及兼容服务（如 DeepSeek API），只需配置对应的 API 地址和 Key 即可。"
+                style={{ fontSize: 12 }}
+              />
             </>
           )
         }

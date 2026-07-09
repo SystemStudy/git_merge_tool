@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save: (settings) => ipcRenderer.invoke('save-settings', settings)
   },
 
+  // 服务端下发的全局配置（独立于本地设置）
+  globalConfig: {
+    get: () => ipcRenderer.invoke('get-global-config')
+  },
+
   // Git操作
   git: {
     getBranches: () => ipcRenderer.invoke('git-get-branches'),
@@ -25,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getUserConfig: () => ipcRenderer.invoke('git-get-user-config'),
     fetch: () => ipcRenderer.invoke('git-fetch'),
     pull: (branch) => ipcRenderer.invoke('git-pull', branch),
+    forceSyncBranch: (branch) => ipcRenderer.invoke('git-force-sync-branch', branch),
     checkout: (branch) => ipcRenderer.invoke('git-checkout', branch),
     cherryPick: (commitShas) => ipcRenderer.invoke('git-cherry-pick', commitShas),
     push: (branch) => ipcRenderer.invoke('git-push', branch),
@@ -43,7 +49,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cherryPickAbort: () => ipcRenderer.invoke('git-cherry-pick-abort'),
     detectVersion: (targetBranch, commitMessage) => ipcRenderer.invoke('git-detect-version', targetBranch, commitMessage),
     checkBranchNameConflict: (branchName) => ipcRenderer.invoke('git-check-branch-name-conflict', branchName),
-    fetchBranch: (branchName) => ipcRenderer.invoke('git-fetch-branch', branchName)
+    fetchBranch: (branchName) => ipcRenderer.invoke('git-fetch-branch', branchName),
+    getConflictFileVersions: (filePaths) => ipcRenderer.invoke('git-get-conflict-file-versions', filePaths),
+    getConflictFileContent: (filePaths) => ipcRenderer.invoke('git-get-conflict-file-content', filePaths),
+    writeFileAndStage: (files) => ipcRenderer.invoke('git-write-file-and-stage', files),
+    getProjectPath: () => ipcRenderer.invoke('git-get-project-path'),
+    // 版本基线替换 / squash 相关
+    getHeadSha: () => ipcRenderer.invoke('git-get-head-sha'),
+    readPomParentVersion: () => ipcRenderer.invoke('git-read-pom-parent-version'),
+    listChangedJavaFiles: (beforePickSha) => ipcRenderer.invoke('git-list-changed-java-files', beforePickSha),
+    applyVersionReplacement: (params) => ipcRenderer.invoke('git-apply-version-replacement', params),
+    squashIntoParent: (params) => ipcRenderer.invoke('git-squash-into-parent', params)
   },
 
   // GitLab操作
@@ -52,6 +68,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getProjectId: (serverUrl, token, projectPath) => ipcRenderer.invoke('gitlab-get-project-id', serverUrl, token, projectPath),
     createMergeRequest: (serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch = true) =>
       ipcRenderer.invoke('gitlab-create-merge-request', serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch)
+  },
+
+  // Claude AI 操作
+  claude: {
+    readLocalConfig: () => ipcRenderer.invoke('claude-read-local-config'),
+    testConnection: (apiUrl, apiKey, model) => ipcRenderer.invoke('claude-test-connection', apiUrl, apiKey, model),
+    fetchModels: (apiUrl, apiKey) => ipcRenderer.invoke('claude-fetch-models', apiUrl, apiKey),
+    resolveConflicts: (params) => ipcRenderer.invoke('claude-resolve-conflicts', params),
+    // 流式冲突解决事件监听，返回取消订阅函数
+    onResolveStream: (callback) => {
+      const listener = (_event, chunk) => callback(chunk);
+      ipcRenderer.on('claude-resolve-stream', listener);
+      return () => ipcRenderer.removeListener('claude-resolve-stream', listener);
+    }
   },
 
   // 系统操作
@@ -63,9 +93,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openFileInEditor: (filePath) => ipcRenderer.invoke('open-file-in-editor', filePath)
   },
 
+  // 窗口控制
+  window: {
+    minimize: () => ipcRenderer.invoke('window-minimize'),
+    toggleMaximize: () => ipcRenderer.invoke('window-toggle-maximize'),
+    close: () => ipcRenderer.invoke('window-close'),
+    isMaximized: () => ipcRenderer.invoke('window-is-maximized')
+  },
+
   // 事件监听
   on: (channel, callback) => {
-    const validChannels = ['project-opened', 'menu-refresh', 'menu-git-fetch', 'menu-git-pull', 'menu-settings'];
+    const validChannels = ['project-opened', 'menu-refresh', 'menu-git-fetch', 'menu-git-pull', 'menu-settings', 'global-config-status'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (event, ...args) => callback(...args));
     }
