@@ -42,7 +42,7 @@ import {
   LockOutlined
 } from '@ant-design/icons';
 import './MainWorkspace.css';
-import { normalizeVersion, matchBranchVersion, decideDirection } from '../utils/versionBaseline';
+import { normalizeVersion, decideDirection } from '../utils/versionBaseline';
 
 /**
  * 遴选后跨版本基线替换 + squash into parent。
@@ -52,32 +52,26 @@ import { normalizeVersion, matchBranchVersion, decideDirection } from '../utils/
  * @param {string} args.targetBranch 目标分支名（用于匹配全局配置中的版本）
  * @param {Function} [args.setProgress] 进度文案更新回调 (statusText) => void
  * @param {string|null} args.currentV 源项目根 pom 归一化版本（遴选前读取，由调用方提供）
+ * @param {string|null} args.targetV 目标分支 pom 归一化版本（从目标分支 pom 读取，优先于全局配置匹配）
  */
-async function applyBaselineReplacementAndSquash({ beforePickSha, targetBranch, setProgress, currentV }) {
+async function applyBaselineReplacementAndSquash({ beforePickSha, targetBranch, setProgress, currentV, targetV: inputTargetV }) {
   const logTag = `[applyBaselineReplacementAndSquash:${targetBranch}]`;
   try {
-    // 1. 全局配置
-    const globalCfg = await window.electronAPI.globalConfig.get();
-    const branchConfig = globalCfg && globalCfg.config && globalCfg.config.branch;
-    if (!branchConfig) {
-      console.warn(`${logTag} 全局配置缺失，跳过基线替换`);
-      return { skipped: 'no-config' };
-    }
-
-    // 2. 当前版本（由调用方在遴选前读源 pom 提供；假设 pom.xml 不在遴选改动里）
+    // 1. 当前版本（由调用方在遴选前读源 pom 提供）
     if (!currentV) {
       console.warn(`${logTag} 未提供当前版本(源 pom 读取失败或无法归一化)，跳过`);
       return { skipped: 'no-current-version' };
     }
 
-    // 3. 目标版本（全局配置按分支名通配匹配）
-    const targetV = matchBranchVersion(targetBranch, branchConfig);
-    if (!targetV) {
-      console.warn(`${logTag} 匹配不到目标分支版本，跳过`);
+    // 2. 目标版本（由调用方从目标分支 pom 读取）
+    if (!inputTargetV) {
+      console.warn(`${logTag} 未提供目标版本(目标分支 pom 读取失败或无法归一化)，跳过`);
       return { skipped: 'no-target-version' };
     }
+    const targetV = inputTargetV;
+    console.log(`${logTag} 使用目标分支 pom 版本: ${targetV}`);
 
-    // 4. 方向
+    // 3. 方向
     const direction = decideDirection(currentV, targetV);
     if (direction === 'skip') {
       if (currentV === targetV) {
@@ -88,14 +82,14 @@ async function applyBaselineReplacementAndSquash({ beforePickSha, targetBranch, 
       return { skipped: 'version-mismatch' };
     }
 
-    // 5. 列出本次遴选改动的 .java 文件
+    // 4. 列出本次遴选改动的 .java 文件
     const listRes = await window.electronAPI.git.listChangedJavaFiles(beforePickSha);
     if (!listRes.success || !listRes.files || listRes.files.length === 0) {
       console.log(`${logTag} 无 .java 改动文件，跳过`);
       return { skipped: 'no-java-files' };
     }
 
-    // 6. 进度提示 + 应用替换
+    // 5. 进度提示 + 应用替换
     if (setProgress) setProgress('检测到存在跨版本合并需要替换的内容，正在自动替换');
     const rep = await window.electronAPI.git.applyVersionReplacement({ files: listRes.files, direction });
     if (!rep.success) {
@@ -107,7 +101,7 @@ async function applyBaselineReplacementAndSquash({ beforePickSha, targetBranch, 
       return { skipped: 'no-change' };
     }
 
-    // 7. squash into parent（合并进最后一个遴选 commit）
+    // 6. squash into parent（合并进最后一个遴选 commit）
     const sq = await window.electronAPI.git.squashIntoParent({ beforePickSha });
     if (!sq.success) {
       message.warning(`跨版本替换已应用，但 squash 合并失败（已回退），将推送未压缩版本: ${sq.error}`);
@@ -1247,6 +1241,20 @@ const MainWorkspace = ({ project, onClose }) => {
           console.log(`[handleCherryPickAndPush] 远程分支不存在: origin/${targetBranch}，已跳过远程更新，继续使用本地分支`);
         }
 
+        // 读取目标分支的 pom 版本，用于跨版本替换方向判定（比全局配置匹配更可靠）
+        let targetVersion = null;
+        try {
+          const targetPom = await window.electronAPI.git.readPomParentVersion();
+          if (targetPom.success) {
+            targetVersion = normalizeVersion(targetPom.version);
+            console.log(`[handleCherryPickAndPush] 目标分支 ${targetBranch} pom parent.version=${targetPom.version} → 归一化 ${targetVersion}`);
+          } else {
+            console.warn(`[handleCherryPickAndPush] 读取目标分支 pom 失败(${targetPom.error})，将回退到全局配置匹配`);
+          }
+        } catch (e) {
+          console.warn(`[handleCherryPickAndPush] 读取目标分支 pom 异常: ${e.message}`);
+        }
+
         // 记录遴选前 HEAD sha，用于后续版本替换的文件 diff 范围与 squash 基点
         const beforePickSha = (await window.electronAPI.git.getHeadSha()).sha;
 
@@ -1491,6 +1499,7 @@ const MainWorkspace = ({ project, onClose }) => {
               beforePickSha,
               targetBranch,
               currentV: sourceVersion,
+              targetV: targetVersion,
               setProgress: (status) => setCherryPickProgress(prev => ({ ...prev, status }))
             });
             // 有实际合并内容，记录该分支用于后续推送
@@ -1855,6 +1864,20 @@ const MainWorkspace = ({ project, onClose }) => {
           }
         }
 
+        // 读取目标分支的 pom 版本，用于跨版本替换方向判定
+        let targetVersion = null;
+        try {
+          const targetPom = await window.electronAPI.git.readPomParentVersion();
+          if (targetPom.success) {
+            targetVersion = normalizeVersion(targetPom.version);
+            console.log(`[handleCreateMergeBranch] 目标分支 pom parent.version=${targetPom.version} → 归一化 ${targetVersion}`);
+          } else {
+            console.warn(`[handleCreateMergeBranch] 读取目标分支 pom 失败(${targetPom.error})，将回退到全局配置匹配`);
+          }
+        } catch (e) {
+          console.warn(`[handleCreateMergeBranch] 读取目标分支 pom 异常: ${e.message}`);
+        }
+
         // 记录遴选前 HEAD sha，用于后续版本替换的文件 diff 范围与 squash 基点
         const beforePickSha = (await window.electronAPI.git.getHeadSha()).sha;
 
@@ -2086,6 +2109,7 @@ const MainWorkspace = ({ project, onClose }) => {
               beforePickSha,
               targetBranch,
               currentV: sourceVersion,
+              targetV: targetVersion,
               setProgress: (status) => setMergeProgress(prev => ({ ...prev, status }))
             });
             // 有实际合并内容，保存分支信息用于后续推送和创建MR
