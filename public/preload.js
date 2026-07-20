@@ -47,11 +47,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cherryPickSingle: (sha) => ipcRenderer.invoke('git-cherry-pick-single', sha),
     cherryPickContinue: () => ipcRenderer.invoke('git-cherry-pick-continue'),
     cherryPickAbort: () => ipcRenderer.invoke('git-cherry-pick-abort'),
+    amendAuthor: (authorName, authorEmail) => ipcRenderer.invoke('git-amend-author', authorName, authorEmail),
     detectVersion: (targetBranch, commitMessage) => ipcRenderer.invoke('git-detect-version', targetBranch, commitMessage),
     checkBranchNameConflict: (branchName) => ipcRenderer.invoke('git-check-branch-name-conflict', branchName),
     fetchBranch: (branchName) => ipcRenderer.invoke('git-fetch-branch', branchName),
     getConflictFileVersions: (filePaths) => ipcRenderer.invoke('git-get-conflict-file-versions', filePaths),
-    getConflictFileContent: (filePaths) => ipcRenderer.invoke('git-get-conflict-file-content', filePaths),
     writeFileAndStage: (files) => ipcRenderer.invoke('git-write-file-and-stage', files),
     getProjectPath: () => ipcRenderer.invoke('git-get-project-path'),
     // 版本基线替换 / squash 相关
@@ -68,20 +68,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getProjectId: (serverUrl, token, projectPath) => ipcRenderer.invoke('gitlab-get-project-id', serverUrl, token, projectPath),
     createMergeRequest: (serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch = true) =>
       ipcRenderer.invoke('gitlab-create-merge-request', serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch)
-  },
-
-  // Claude AI 操作
-  claude: {
-    readLocalConfig: () => ipcRenderer.invoke('claude-read-local-config'),
-    testConnection: (apiUrl, apiKey, model) => ipcRenderer.invoke('claude-test-connection', apiUrl, apiKey, model),
-    fetchModels: (apiUrl, apiKey) => ipcRenderer.invoke('claude-fetch-models', apiUrl, apiKey),
-    resolveConflicts: (params) => ipcRenderer.invoke('claude-resolve-conflicts', params),
-    // 流式冲突解决事件监听，返回取消订阅函数
-    onResolveStream: (callback) => {
-      const listener = (_event, chunk) => callback(chunk);
-      ipcRenderer.on('claude-resolve-stream', listener);
-      return () => ipcRenderer.removeListener('claude-resolve-stream', listener);
-    }
   },
 
   // 系统操作

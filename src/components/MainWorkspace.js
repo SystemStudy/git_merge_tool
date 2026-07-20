@@ -25,7 +25,6 @@ import CommitListPanel from './CommitListPanel';
 import {
   MergeProgressModal,
   MergeResultModal,
-  ClaudeStreamModal,
   ConflictResolveModal,
   CherryPickProgressModal,
   CherryPickResultModal,
@@ -105,15 +104,9 @@ const MainWorkspace = ({ project, onClose }) => {
   const [versionDetectProgress, setVersionDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
   const [versionDetectResultModal, setVersionDetectResultModal] = useState({ visible: false, results: [] });
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
-  const [conflictClaudeLoading, setConflictClaudeLoading] = useState(false);
   const [, setConflictAutoMerging] = useState(false);
   const conflictResolveRef = useRef(null);
-  // Claude 智能冲突对话 Modal：流式展示思考与返回值，用户确认后应用
-  const [claudeStreamModal, setClaudeStreamModal] = useState({
-    visible: false, loading: false, thinking: '', text: '', files: null, error: null
-  });
-  const claudeConfirmResolveRef = useRef(null);
-  
+
   // 优化：使用 ref 存储 selectedCommits 的 Set 以提高查找性能
   const selectedCommitsRef = useRef(new Set());
   
@@ -227,76 +220,6 @@ const MainWorkspace = ({ project, onClose }) => {
       setConflictAutoMerging(false);
     }
   }, []);
-
-  // Claude 智能冲突处理（流式，对话 Modal 展示思考与返回值，用户确认后应用）
-  const handleClaudeResolveConflicts = useCallback(async (targetBranch, conflictedFiles) => {
-    setConflictClaudeLoading(true);
-
-    try {
-      const contentResult = await window.electronAPI.git.getConflictFileContent(conflictedFiles);
-      if (!contentResult.success) {
-        message.error('无法读取冲突文件内容: ' + contentResult.error);
-        return 'claude-failed';
-      }
-
-      const params = {
-        files: contentResult.files,
-        projectName: project.name,
-        projectPath: project.path,
-        operation: `cherry-pick 到 ${targetBranch}`
-      };
-
-      // 打开对话 Modal，初始 loading
-      setClaudeStreamModal({ visible: true, loading: true, thinking: '', text: '', files: null, error: null });
-
-      // 注册流式监听，增量更新思考与返回内容
-      const offStream = window.electronAPI.claude.onResolveStream((chunk) => {
-        setClaudeStreamModal((prev) => {
-          if (chunk.type === 'thinking') return { ...prev, thinking: prev.thinking + chunk.data };
-          if (chunk.type === 'text') return { ...prev, text: prev.text + chunk.data };
-          return prev;
-        });
-      });
-
-      let claudeResult;
-      try {
-        claudeResult = await window.electronAPI.claude.resolveConflicts(params);
-      } finally {
-        offStream();
-      }
-
-      if (!claudeResult.success) {
-        // 展示错误，等待用户关闭后再回退到手动处理
-        setClaudeStreamModal((prev) => ({ ...prev, loading: false, error: claudeResult.error }));
-        await new Promise((resolve) => { claudeConfirmResolveRef.current = resolve; });
-        setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
-        return 'claude-failed';
-      }
-
-      // 成功：展示结果，等待用户选择「应用并继续」或「放弃」
-      setClaudeStreamModal((prev) => ({ ...prev, loading: false, files: claudeResult.files }));
-      const userChoice = await new Promise((resolve) => { claudeConfirmResolveRef.current = resolve; });
-      setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
-
-      if (userChoice === 'apply') {
-        const writeResult = await window.electronAPI.git.writeFileAndStage(claudeResult.files);
-        if (!writeResult.success) {
-          message.error('写入已解决文件失败: ' + writeResult.error);
-          return 'claude-failed';
-        }
-        message.success('智能冲突处理完成');
-        return 'claude-success';
-      }
-      // 放弃 → 回退到手动冲突处理
-      return 'claude-failed';
-    } catch (e) {
-      message.error('智能冲突处理出错: ' + e.message);
-      setClaudeStreamModal((prev) => ({ ...prev, visible: false }));
-      return 'claude-failed';
-    } finally {
-      setConflictClaudeLoading(false);
-    }
-  }, [project.name, project.path]);
 
   // 加载初始数据
   useEffect(() => {
@@ -531,11 +454,12 @@ const MainWorkspace = ({ project, onClose }) => {
     setSelectedCommits,
     setConflictModal,
     handleAutoMergeLanguageFiles,
-    handleClaudeResolveConflicts,
-    setConflictClaudeLoading,
     conflictResolveRef,
     loadCurrentBranch,
     loadCommits,
+    findCommitByHash,
+    settings,
+    setSettings,
   });
 
   // 创建合并分支操作（抽取到 hook）
@@ -553,12 +477,11 @@ const MainWorkspace = ({ project, onClose }) => {
     setSettingsVisible,
     setConflictModal,
     handleAutoMergeLanguageFiles,
-    handleClaudeResolveConflicts,
-    setConflictClaudeLoading,
     conflictResolveRef,
     findCommitByHash,
     loadCurrentBranch,
     loadBranches,
+    setSettings,
   });
 
   const { handleDetectConflicts, handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
@@ -720,6 +643,7 @@ const MainWorkspace = ({ project, onClose }) => {
         width={600}
         open={settingsVisible}
         onClose={() => setSettingsVisible(false)}
+        rootStyle={{ top: 40 }}
       >
         <SettingsForm
           settings={settings}
@@ -752,8 +676,7 @@ const MainWorkspace = ({ project, onClose }) => {
       {/* 所有进度/结果 Modal */}
       <MergeProgressModal mergeProgress={mergeProgress} />
       <MergeResultModal mergeResultModal={mergeResultModal} setMergeResultModal={setMergeResultModal} selectedCommits={selectedCommits} findCommitByHash={findCommitByHash} />
-      <ClaudeStreamModal claudeStreamModal={claudeStreamModal} claudeConfirmResolveRef={claudeConfirmResolveRef} />
-      <ConflictResolveModal conflictModal={conflictModal} conflictClaudeLoading={conflictClaudeLoading} conflictResolveRef={conflictResolveRef} allFilesResolved={allFilesResolved} handleConflictConfirm={handleConflictConfirm} handleConflictCancel={handleConflictCancel} handleOpenFile={handleOpenFile} handleMarkResolved={handleMarkResolved} />
+      <ConflictResolveModal conflictModal={conflictModal} allFilesResolved={allFilesResolved} handleConflictConfirm={handleConflictConfirm} handleConflictCancel={handleConflictCancel} handleOpenFile={handleOpenFile} handleMarkResolved={handleMarkResolved} />
       <CherryPickProgressModal cherryPickProgress={cherryPickProgress} />
       <CherryPickResultModal cherryPickResultModal={cherryPickResultModal} setCherryPickResultModal={setCherryPickResultModal} />
       <ConflictProgressModal conflictProgress={conflictProgress} />

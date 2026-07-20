@@ -12,7 +12,6 @@ const { initLogger, getLogFilePath, closeLogger } = require('./logger');
 const registerGitHandlers = require('./ipc-handlers/ipc-git-operations');
 const registerGitVersionHandlers = require('./ipc-handlers/ipc-git-version');
 const registerGitLabHandlers = require('./ipc-handlers/ipc-gitlab');
-const registerClaudeHandlers = require('./ipc-handlers/ipc-claude');
 const registerSystemHandlers = require('./ipc-handlers/ipc-system');
 
 initLogger();
@@ -32,15 +31,20 @@ const store = new Store({
       businessLine: 'MK',
       defaultPushSourceEnabled: true,
       defaultDeleteSourceEnabled: true,
-      // Claude AI 配置
-      claudeUseLocalConfig: true,     // 是否读取本地 Claude 配置（默认开启）
-      claudeModel: '',                // 当前选中的模型（开关ON/OFF都存储）
-      claudeApiUrl: '',               // Claude API 地址（仅开关OFF时存储）
-      claudeApiKey: '',               // Claude API Key（仅开关OFF时存储）
-      claudeModelSupports1M: false   // 当前模型是否声明支持 1M 上下文
+      authorReplaceEmail: ''         // author 邮箱不合规时的默认替换邮箱
     }
   }
 });
+
+// 一次性迁移：清理历史版本遗留的 Claude 配置字段
+{
+  const legacySettings = store.get('settings') || {};
+  const claudeKeys = ['claudeUseLocalConfig', 'claudeModel', 'claudeApiUrl', 'claudeApiKey', 'claudeModelSupports1M'];
+  if (claudeKeys.some(k => k in legacySettings)) {
+    claudeKeys.forEach(k => delete legacySettings[k]);
+    store.set('settings', legacySettings);
+  }
+}
 
 // 全局配置存储（与服务端下发配置对应，与应用本地设置 store 区分开）
 // 文件名: git-merge-assistant-global-config.json，独立于 git-merge-assistant-config.json
@@ -94,48 +98,6 @@ function notifyGlobalConfigStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('global-config-status', globalConfigStatus);
   }
-}
-
-/**
- * 获取当前有效的 Claude 配置（运行时实时解析）
- * 如果开启了读取本地配置，则从环境变量和 ~/.claude/settings.json 实时读取 apiUrl/apiKey
- * 开关 OFF 时从 electron-store 读取
- */
-function getClaudeConfig() {
-  const settings = store.get('settings');
-  const os = require('os');
-
-  let apiUrl = settings.claudeApiUrl || '';
-  let apiKey = settings.claudeApiKey || '';
-  let model = settings.claudeModel || '';
-
-  if (settings.claudeUseLocalConfig) {
-    // 开关 ON：实时读取本地配置
-    // 1. 环境变量优先
-    if (process.env.ANTHROPIC_AUTH_TOKEN) apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
-    if (process.env.ANTHROPIC_BASE_URL) apiUrl = process.env.ANTHROPIC_BASE_URL;
-    if (process.env.ANTHROPIC_MODEL && !model) model = process.env.ANTHROPIC_MODEL;
-
-    // 2. ~/.claude/settings.json
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    try {
-      if (fs.existsSync(settingsPath)) {
-        const local = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-        const env = local.env || {};
-        if (!apiKey && env.ANTHROPIC_AUTH_TOKEN) apiKey = env.ANTHROPIC_AUTH_TOKEN;
-        if (!apiUrl && env.ANTHROPIC_BASE_URL) apiUrl = env.ANTHROPIC_BASE_URL;
-      }
-    } catch (e) {
-      console.log('读取本地 Claude 配置文件失败:', e.message);
-    }
-  }
-
-  // 1M 上下文通过 anthropic-beta 请求头声明（参考 cc-switch 的 context-1m-2025-08-07），
-  // 不再给模型名拼接 [1m] 后缀——上游中转站通常不认本地 [1m] 标记，拼接会导致 503。
-  const supports1M = settings.claudeModelSupports1M === true;
-
-  console.log(`[getClaudeConfig] useLocal=${settings.claudeUseLocalConfig}, apiUrl=${apiUrl ? '(已配置)' : '(空)'}, apiKey=${apiKey ? '(已配置)' : '(空)'}, model=${model || '(空)'}, supports1M=${supports1M}`);
-  return { apiUrl, apiKey, model, supports1M };
 }
 
 let mainWindow = null;
@@ -329,7 +291,6 @@ function setupIpcHandlers() {
   registerGitHandlers(ipcMain, { getGit, getProjectPath });
   registerGitVersionHandlers(ipcMain, { getGit, getProjectPath });
   registerGitLabHandlers(ipcMain, { getGit, getProjectPath });
-  registerClaudeHandlers(ipcMain, { getGit, getProjectPath, getClaudeConfig });
   registerSystemHandlers(ipcMain, {
     mainWindow,
     store,

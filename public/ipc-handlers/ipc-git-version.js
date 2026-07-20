@@ -121,27 +121,6 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
     }
   });
 
-  // 获取带冲突标记的原始文件内容（用于 Claude 智能处理）
-  ipcMain.handle('git-get-conflict-file-content', async (event, filePaths) => {
-    const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-conflict-file-content] 读取冲突文件内容: ${filePaths.length} 个文件`);
-
-    if (!getProjectPath()) throw new Error('未打开项目');
-
-    try {
-      const files = [];
-      for (const filePath of filePaths) {
-        const absPath = path.join(getProjectPath(), filePath);
-        const content = fs.readFileSync(absPath, 'utf-8');
-        files.push({ path: filePath, content });
-      }
-      return { success: true, files };
-    } catch (error) {
-      console.error(`[${timestamp}] [git-get-conflict-file-content] 失败: ${error.message}`);
-      return { success: false, error: error.message };
-    }
-  });
-
   // 写入文件内容并 git add
   ipcMain.handle('git-write-file-and-stage', async (event, files) => {
     const timestamp = formatTimestamp();

@@ -1,9 +1,9 @@
 import React from 'react';
 import {
-  Modal, Progress, Alert, Card, Tag, Button, Space, Spin, Table, message, Input
+  Modal, Progress, Alert, Card, Tag, Button, Space, Table, message, Input
 } from 'antd';
 import {
-  BranchesOutlined, CopyOutlined, CodeOutlined, SearchOutlined
+  BranchesOutlined, CopyOutlined, SearchOutlined
 } from '@ant-design/icons';
 
 const { Search } = Input;
@@ -189,56 +189,9 @@ export function MergeResultModal({ mergeResultModal, setMergeResultModal, select
 }
 
 /**
- * Claude 智能冲突分析 Modal
- */
-export function ClaudeStreamModal({ claudeStreamModal, claudeConfirmResolveRef }) {
-  return (
-    <Modal
-      title="智能冲突解决"
-      open={claudeStreamModal.visible}
-      closable={!claudeStreamModal.loading}
-      maskClosable={false}
-      zIndex={2100}
-      width={720}
-      footer={
-        claudeStreamModal.loading
-          ? null
-          : claudeStreamModal.error
-            ? [<Button key="close" onClick={() => claudeConfirmResolveRef.current?.('cancel')}>关闭</Button>]
-            : [
-                <Button key="cancel" onClick={() => claudeConfirmResolveRef.current?.('cancel')}>放弃</Button>,
-                <Button key="apply" type="primary" onClick={() => claudeConfirmResolveRef.current?.('apply')}>应用并继续</Button>
-              ]
-      }
-    >
-      <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-        {claudeStreamModal.thinking && (
-          <details open style={{ marginBottom: 12, background: '#fafafa', padding: '8px 12px', borderRadius: 6 }}>
-            <summary style={{ cursor: 'pointer', color: '#888', fontWeight: 500 }}>模型思考</summary>
-            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '8px 0 0', fontSize: 12, color: '#666' }}>{claudeStreamModal.thinking}</pre>
-          </details>
-        )}
-        <div style={{ background: '#f5f5f5', padding: '8px 12px', borderRadius: 6 }}>
-          <div style={{ fontWeight: 500, marginBottom: 4 }}>返回内容</div>
-          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, fontSize: 13 }}>{claudeStreamModal.text}{claudeStreamModal.loading ? '\u258D' : ''}</pre>
-        </div>
-        {claudeStreamModal.loading && (
-          <div style={{ textAlign: 'center', marginTop: 16, color: '#888' }}>
-            <Spin size="small" /> <span style={{ marginLeft: 8 }}>模型思考中...</span>
-          </div>
-        )}
-        {claudeStreamModal.error && (
-          <Alert type="error" message="处理失败" description={claudeStreamModal.error} style={{ marginTop: 12 }} />
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-/**
  * 冲突解决 Modal
  */
-export function ConflictResolveModal({ conflictModal, conflictClaudeLoading, conflictResolveRef, allFilesResolved, handleConflictConfirm, handleConflictCancel, handleOpenFile, handleMarkResolved }) {
+export function ConflictResolveModal({ conflictModal, allFilesResolved, handleConflictConfirm, handleConflictCancel, handleOpenFile, handleMarkResolved }) {
   return (
     <Modal
       title="使用外部应用解决冲突"
@@ -299,25 +252,6 @@ export function ConflictResolveModal({ conflictModal, conflictClaudeLoading, con
             </Space>
           </div>
         ))}
-        {/* 智能冲突处理按钮区域 */}
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
-            或使用 AI 自动解决冲突
-          </div>
-          <Button
-            type="default"
-            icon={<CodeOutlined />}
-            loading={conflictClaudeLoading}
-            onClick={() => conflictResolveRef.current?.('claude-resolve')}
-          >
-            智能冲突处理
-          </Button>
-          {conflictClaudeLoading && (
-            <div style={{ marginTop: 12 }}>
-              <Spin tip="AI 正在分析并解决冲突..." />
-            </div>
-          )}
-        </div>
       </div>
     </Modal>
   );

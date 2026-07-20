@@ -13,8 +13,6 @@ import { showSkipAbortDialog } from '../utils/workspaceHelpers';
  * @param {string} [params.mergeBranchName] - 合并分支名（handleCreateMergeBranch 使用，会写入结果对象）
  * @param {Function} params.setProgress - React state setter for progress（接受 updater function）
  * @param {Function} params.handleAutoMergeLanguageFiles - 多语言自动合并函数
- * @param {Function} params.handleClaudeResolveConflicts - Claude 智能冲突处理函数
- * @param {Function} params.setConflictClaudeLoading - Claude loading state setter
  * @param {boolean} params.throwOnError - 是否在终止时 throw（handleCreateMergeBranch 需要 throw）
  * @param {string} params.sourceVersion - 源版本号（归一化后）
  * @param {string} params.targetVersion - 目标版本号（归一化后）
@@ -26,6 +24,8 @@ import { showSkipAbortDialog } from '../utils/workspaceHelpers';
  * @param {Function} params.setLoading - loading state setter
  * @param {Array} params.results - 结果数组（会直接 push）
  * @param {string} [params.logPrefix] - 日志前缀
+ * @param {Map<string,string>} [params.invalidAuthorMap] - author 邮箱不合规的提交（hash -> 原作者名），遴选成功后重写邮箱
+ * @param {string} [params.replacementEmail] - 替换邮箱
  * @returns {Promise<{aborted: boolean, branchHasError: boolean}>}
  */
 export async function runCherryPickLoop(params) {
@@ -35,8 +35,6 @@ export async function runCherryPickLoop(params) {
     mergeBranchName,
     setProgress,
     handleAutoMergeLanguageFiles,
-    handleClaudeResolveConflicts,
-    setConflictClaudeLoading,
     throwOnError = false,
     sourceVersion,
     targetVersion,
@@ -48,9 +46,23 @@ export async function runCherryPickLoop(params) {
     setLoading,
     results,
     logPrefix = 'runCherryPickLoop',
+    invalidAuthorMap = null,
+    replacementEmail = null,
   } = params;
 
   const opTimestamp = new Date().toISOString();
+
+  // Helper: 提交遴选成功后，若该提交 author 邮箱不合规则重写为替换邮箱（保留原作者名）
+  const amendAuthorIfNeeded = async (sha) => {
+    if (!invalidAuthorMap?.has(sha) || !replacementEmail) return;
+    const amendResult = await window.electronAPI.git.amendAuthor(invalidAuthorMap.get(sha), replacementEmail);
+    if (amendResult.success) {
+      console.log(`[${opTimestamp}] [${logPrefix}] commit ${sha.substring(0, 8)} author 邮箱已替换为 <${replacementEmail}>`);
+    } else {
+      console.error(`[${opTimestamp}] [${logPrefix}] commit ${sha.substring(0, 8)} author 邮箱重写失败: ${amendResult.error}`);
+      message.warning(`Commit ${sha.substring(0, 8)} 作者邮箱重写失败: ${amendResult.error}`);
+    }
+  };
 
   // Helper: 构建错误结果对象
   const buildErrorResult = (error) => {
@@ -90,6 +102,7 @@ export async function runCherryPickLoop(params) {
 
     if (singleResult.status === 'success') {
       console.log(`[${opTimestamp}] [${logPrefix}] commit ${sha.substring(0, 8)} cherry-pick 成功`);
+      await amendAuthorIfNeeded(sha);
     } else if (singleResult.status === 'skipped') {
       console.log(`[${opTimestamp}] [${logPrefix}] commit ${sha.substring(0, 8)} 已存在，跳过`);
     } else if (singleResult.status === 'conflict') {
@@ -103,6 +116,7 @@ export async function runCherryPickLoop(params) {
         if (autoResult === 'auto-success') {
           const continueResult = await window.electronAPI.git.cherryPickContinue();
           if (continueResult.success) {
+            await amendAuthorIfNeeded(sha);
             continue; // 跳过手动冲突处理，继续下一个 commit
           }
           // 自动合并后 continue 失败
@@ -140,73 +154,7 @@ export async function runCherryPickLoop(params) {
       // 关闭冲突 modal
       setConflictModal(prev => ({ ...prev, visible: false }));
 
-      if (userAction === 'claude-resolve') {
-        // Claude 智能冲突处理
-        const claudeResult = await handleClaudeResolveConflicts(targetBranch, conflictedFiles);
-        if (claudeResult === 'claude-success') {
-          const continueResult = await window.electronAPI.git.cherryPickContinue();
-          if (!continueResult.success) {
-            const choice = await showSkipAbortDialog(
-              '智能处理后继续 cherry-pick 失败',
-              <div>
-                <p>智能冲突处理完成，但继续 cherry-pick 失败：{continueResult.error}</p>
-                <p>请选择操作：</p>
-              </div>
-            );
-            if (choice === 'abort') {
-              handleAbort();
-              return { aborted: true, branchHasError: false };
-            } else {
-              branchHasError = true;
-              results.push(buildErrorResult(continueResult.error));
-            }
-          }
-        } else {
-          // Claude 失败 → 重新打开 conflictModal 让用户手动处理
-          message.warning('智能处理失败，请手动解决冲突');
-          const retryAction = await new Promise((resolve) => {
-            conflictResolveRef.current = resolve;
-            setConflictModal({
-              visible: true,
-              files: conflictedFiles.map(p => ({ path: p, resolved: false })),
-              branch: targetBranch,
-              sha: sha
-            });
-          });
-          setConflictModal(prev => ({ ...prev, visible: false }));
-
-          if (retryAction === 'confirm') {
-            const continueResult = await window.electronAPI.git.cherryPickContinue();
-            if (!continueResult.success) {
-              const choice = await showSkipAbortDialog(
-                '继续 cherry-pick 失败',
-                <div><p>解决冲突后继续 cherry-pick 失败：{continueResult.error}</p><p>请选择操作：</p></div>
-              );
-              if (choice === 'abort') {
-                handleAbort();
-                return { aborted: true, branchHasError: false };
-              } else {
-                branchHasError = true;
-                results.push(buildErrorResult(continueResult.error));
-              }
-            }
-          } else {
-            await window.electronAPI.git.cherryPickAbort();
-            const choice = await showSkipAbortDialog(
-              '已放弃冲突解决',
-              <div><p>已放弃解决冲突，cherry-pick 已中止。</p><p>请选择操作：</p></div>
-            );
-            if (choice === 'abort') {
-              handleAbort();
-              return { aborted: true, branchHasError: false };
-            } else {
-              branchHasError = true;
-              results.push(buildErrorResult('用户放弃冲突解决'));
-            }
-          }
-        }
-        setConflictClaudeLoading(false);
-      } else if (userAction === 'confirm') {
+      if (userAction === 'confirm') {
         // 用户确认已解决冲突 → 继续 cherry-pick
         const continueResult = await window.electronAPI.git.cherryPickContinue();
         if (!continueResult.success) {
@@ -224,6 +172,8 @@ export async function runCherryPickLoop(params) {
             branchHasError = true;
             results.push(buildErrorResult(continueResult.error));
           }
+        } else {
+          await amendAuthorIfNeeded(sha);
         }
       } else {
         // 用户取消 → abort → 询问跳过/终止

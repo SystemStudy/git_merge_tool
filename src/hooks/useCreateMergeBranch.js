@@ -11,6 +11,7 @@ import {
   validateCustomBranches,
   extractIssueNumber,
   generateBranchName,
+  ensureAuthorEmailCompliance,
 } from '../utils/workspaceHelpers';
 
 /**
@@ -32,12 +33,11 @@ export const useCreateMergeBranch = ({
   setSettingsVisible,
   setConflictModal,
   handleAutoMergeLanguageFiles,
-  handleClaudeResolveConflicts,
-  setConflictClaudeLoading,
   conflictResolveRef,
   findCommitByHash,
   loadCurrentBranch,
   loadBranches,
+  setSettings,
 }) => {
   const handleCreateMergeBranch = async () => {
     const timestamp = new Date().toISOString();
@@ -80,6 +80,19 @@ export const useCreateMergeBranch = ({
     const totalOperations = effectiveBranches.length;
     const results = [];
 
+    // 提取问题单号
+    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
+    const issueNumber = extractIssueNumber(selectedCommitsData);
+    const username = currentUser.name || 'unknown';
+
+    // 校验选中提交的 author 邮箱合规性（不合规则弹窗获取替换邮箱）
+    const compliance = await ensureAuthorEmailCompliance({ commits: selectedCommitsData, settings, setSettings });
+    if (!compliance.proceed) {
+      setLoading(false);
+      message.info('操作已取消');
+      return;
+    }
+
     // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
     if (hasUncommitted) {
@@ -95,11 +108,6 @@ export const useCreateMergeBranch = ({
       status: '正在准备创建合并分支...',
       results: []
     });
-
-    // 提取问题单号
-    const selectedCommitsData = selectedCommits.map(hash => findCommitByHash(hash)).filter(Boolean);
-    const issueNumber = extractIssueNumber(selectedCommitsData);
-    const username = currentUser.name || 'unknown';
 
     console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 提取到问题单号: ${issueNumber || '无'}`);
     console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 当前用户名: ${username}`);
@@ -276,8 +284,6 @@ export const useCreateMergeBranch = ({
           mergeBranchName,
           setProgress: setMergeProgress,
           handleAutoMergeLanguageFiles,
-          handleClaudeResolveConflicts,
-          setConflictClaudeLoading,
           throwOnError: true,
           sourceVersion,
           targetVersion,
@@ -307,6 +313,8 @@ export const useCreateMergeBranch = ({
           setLoading,
           results,
           logPrefix: 'handleCreateMergeBranch',
+          invalidAuthorMap: compliance.invalidAuthorMap,
+          replacementEmail: compliance.replacementEmail,
         });
       }
 

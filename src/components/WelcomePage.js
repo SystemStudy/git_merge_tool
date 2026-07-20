@@ -12,11 +12,7 @@ import {
   Input,
   Tabs,
   Alert,
-  message,
-  Switch,
-  Select,
-  AutoComplete,
-  Checkbox
+  message
 } from 'antd';
 import {
   FolderOpenOutlined,
@@ -24,9 +20,7 @@ import {
   DeleteOutlined,
   SettingOutlined,
   BranchesOutlined,
-  SearchOutlined,
-  LockOutlined,
-  DownloadOutlined
+  SearchOutlined
 } from '@ant-design/icons';
 import './WelcomePage.css';
 
@@ -39,21 +33,7 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
   const [settings, setSettings] = useState({});
   const [testResult, setTestResult] = useState(null);
   const [form] = Form.useForm();
-  // 监听当前选中的模型，确保其始终出现在下拉选项中（避免选中值不在列表时显示为空）
-  const claudeModelValue = Form.useWatch('claudeModel', form);
   const [searchText, setSearchText] = useState('');
-  // Claude 设置相关状态
-  const [claudeUseLocal, setClaudeUseLocal] = useState(settings.claudeUseLocalConfig ?? true);
-  const [claudeLoading, setClaudeLoading] = useState(false);
-  const [claudeLocalApiUrl, setClaudeLocalApiUrl] = useState('');
-  const [claudeLocalApiKey, setClaudeLocalApiKey] = useState('');
-  const [claudeLocalModels, setClaudeLocalModels] = useState([]);
-  const [claudeTestResult, setClaudeTestResult] = useState(null);
-  const [claudeFetchedModels, setClaudeFetchedModels] = useState([]);
-  const [claudeFetchingModels, setClaudeFetchingModels] = useState(false);
-  const [claudeTesting, setClaudeTesting] = useState(false);
-  const [claudeSupports1M, setClaudeSupports1M] = useState(settings.claudeModelSupports1M ?? false);
-  const [claudeModelsMeta, setClaudeModelsMeta] = useState({});
 
   useEffect(() => {
     loadRecentProjects();
@@ -129,129 +109,10 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
     }
   };
 
-  // 初始化 Claude 本地配置状态（settings 加载后）
-  useEffect(() => {
-    if (settings.claudeUseLocalConfig) {
-      setClaudeUseLocal(true);
-      // 开关 ON 时回填本地配置的 apiUrl/apiKey/模型，避免重启后地址与密钥为空
-      loadLocalClaudeConfig();
-    } else {
-      setClaudeUseLocal(false);
-    }
-  }, [settings.claudeUseLocalConfig]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadLocalClaudeConfig = async () => {
-    setClaudeLoading(true);
-    try {
-      const result = await window.electronAPI.claude.readLocalConfig();
-      if (result.success && result.config.exists) {
-        setClaudeLocalApiUrl(result.config.apiUrl);
-        setClaudeLocalApiKey(result.config.apiKey);
-        setClaudeLocalModels(result.config.models);
-        setClaudeModelsMeta(result.config.modelsMeta || {});
-        if (!form.getFieldValue('claudeModel')) {
-          // 优先回填配置文件中已保存的模型；否则退回本地默认模型。
-          // 注意：此处可能在 <Form> 挂载前调用，antd 挂载时已存在的 store 值会覆盖
-          // initialValues，因此必须写入与 settings 一致的值，避免空串覆盖已保存的选中值。
-          const savedModel = settings.claudeModel;
-          if (savedModel) {
-            form.setFieldsValue({ claudeModel: savedModel });
-            setClaudeSupports1M(settings.claudeModelSupports1M ?? false);
-          } else if (result.config.model) {
-            form.setFieldsValue({ claudeModel: result.config.model });
-            setClaudeSupports1M(result.config.modelSupports1M ?? false);
-          }
-        }
-        setClaudeUseLocal(true);
-      } else {
-        message.warning('当前系统未检测到 Claude 配置，请手动填写');
-        setClaudeUseLocal(false);
-      }
-    } catch (e) {
-      message.error('读取本地配置失败: ' + e.message);
-      setClaudeUseLocal(false);
-    } finally {
-      setClaudeLoading(false);
-    }
-  };
-
-  const getCurrentApiParams = () => {
-    if (claudeUseLocal) {
-      return {
-        apiUrl: claudeLocalApiUrl,
-        apiKey: claudeLocalApiKey,
-        model: form.getFieldValue('claudeModel')
-      };
-    }
-    return {
-      apiUrl: form.getFieldValue('claudeApiUrl'),
-      apiKey: form.getFieldValue('claudeApiKey'),
-      model: form.getFieldValue('claudeModel')
-    };
-  };
-
-  const handleClaudeTestConnection = async () => {
-    const { apiUrl, apiKey, model } = getCurrentApiParams();
-    if (!apiUrl || !apiKey) {
-      message.warning('请先配置 API 地址和 Key');
-      return;
-    }
-    setClaudeTesting(true);
-    try {
-      const result = await window.electronAPI.claude.testConnection(apiUrl, apiKey, model);
-      setClaudeTestResult(result);
-      if (result.success) {
-        message.success('Claude 连接测试成功');
-      } else {
-        message.error(result.error);
-      }
-    } catch (e) {
-      setClaudeTestResult({ success: false, error: e.message });
-      message.error('测试连接失败: ' + e.message);
-    } finally {
-      setClaudeTesting(false);
-    }
-  };
-
-  const handleClaudeFetchModels = async () => {
-    const { apiUrl, apiKey } = getCurrentApiParams();
-    if (!apiUrl || !apiKey) {
-      message.warning('请先配置 API 地址和 Key');
-      return;
-    }
-    setClaudeFetchingModels(true);
-    try {
-      const result = await window.electronAPI.claude.fetchModels(apiUrl, apiKey);
-      if (result.success) {
-        setClaudeFetchedModels(result.models);
-        if (result.modelsMeta) setClaudeModelsMeta(prev => ({ ...prev, ...result.modelsMeta }));
-        message.success(`获取到 ${result.models.length} 个模型`);
-      } else if (result.notSupported) {
-        message.info('当前 API 服务不支持获取模型列表，请手动输入模型名称');
-      } else {
-        message.error(result.error);
-      }
-    } catch (e) {
-      message.error('获取模型列表失败: ' + e.message);
-    } finally {
-      setClaudeFetchingModels(false);
-    }
-  };
-
   const handleSaveSettings = async (values) => {
     try {
       // 以现有 settings 为底合并表单值，避免未在表单中出现的字段（如分支预设）被清空
       const newSettings = { ...settings, ...values };
-
-      if (claudeUseLocal) {
-        newSettings.claudeUseLocalConfig = true;
-        delete newSettings.claudeApiUrl;
-        delete newSettings.claudeApiKey;
-      } else {
-        newSettings.claudeUseLocalConfig = false;
-      }
-
-      newSettings.claudeModelSupports1M = claudeSupports1M;
 
       await window.electronAPI.settings.save(newSettings);
       setSettings(newSettings);
@@ -386,6 +247,7 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
         width={600}
         open={settingsVisible}
         onClose={() => setSettingsVisible(false)}
+        rootStyle={{ top: 40 }}
       >
         <Form
           form={form}
@@ -478,127 +340,6 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
                 </>
               )
             },
-            {
-              key: 'claude',
-              label: 'Claude设置',
-              children: (
-                <>
-                  <div style={{ marginBottom: 16 }}>
-                    <Space align="center">
-                      <span style={{ fontWeight: 500 }}>读取本地Claude配置</span>
-                      <Switch
-                        checked={claudeUseLocal}
-                        loading={claudeLoading}
-                        onChange={async (checked) => {
-                          if (checked) {
-                            await loadLocalClaudeConfig();
-                          } else {
-                            setClaudeUseLocal(false);
-                          }
-                        }}
-                      />
-                    </Space>
-                    <div style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
-                      开启后自动读取 ~/.claude/settings.json 和环境变量，API地址和Key不存储到本地
-                    </div>
-                  </div>
-
-                  <Form.Item
-                    label="Claude API 地址"
-                    name={claudeUseLocal ? undefined : 'claudeApiUrl'}
-                  >
-                    <Input
-                      value={claudeUseLocal ? claudeLocalApiUrl : undefined}
-                      placeholder="https://api.anthropic.com"
-                      disabled={claudeUseLocal}
-                      suffix={claudeUseLocal ? <LockOutlined style={{ color: '#999' }} /> : null}
-                      onChange={!claudeUseLocal ? (e) => form.setFieldsValue({ claudeApiUrl: e.target.value }) : undefined}
-                    />
-                  </Form.Item>
-
-                  <Form.Item
-                    label="Claude API Key"
-                    name={claudeUseLocal ? undefined : 'claudeApiKey'}
-                  >
-                    <Input.Password
-                      value={claudeUseLocal ? claudeLocalApiKey : undefined}
-                      placeholder="输入 API Key"
-                      disabled={claudeUseLocal}
-                      suffix={claudeUseLocal ? <LockOutlined style={{ color: '#999' }} /> : null}
-                      onChange={!claudeUseLocal ? (e) => form.setFieldsValue({ claudeApiKey: e.target.value }) : undefined}
-                    />
-                  </Form.Item>
-
-                  {/* 模型名称 + 1M 复选框 */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <Form.Item label="模型名称" name="claudeModel" style={{ flex: 1, marginBottom: 0 }}>
-                      {claudeUseLocal ? (
-                        <Select
-                          placeholder="选择模型"
-                          options={[...new Set([...claudeLocalModels, ...claudeFetchedModels, claudeModelValue].filter(Boolean))].map(m => ({ label: m, value: m }))}
-                          onChange={(value) => {
-                            if (claudeModelsMeta[value]) {
-                              setClaudeSupports1M(true);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <AutoComplete
-                          placeholder="输入或选择模型"
-                          options={[...new Set([...claudeLocalModels, ...claudeFetchedModels, claudeModelValue].filter(Boolean))].map(m => ({ label: m, value: m }))}
-                          filterOption={(inputValue, option) =>
-                            option.label.toLowerCase().includes(inputValue.toLowerCase())
-                          }
-                        />
-                      )}
-                    </Form.Item>
-                    <div>
-                      <div style={{ height: 22, marginBottom: 8, lineHeight: '22px', fontSize: 14, color: 'rgba(0,0,0,0.88)' }}>
-                        声明支持 1M
-                      </div>
-                      <div style={{ height: 32, display: 'flex', alignItems: 'center' }}>
-                        <Checkbox
-                          checked={claudeSupports1M}
-                          onChange={(e) => setClaudeSupports1M(e.target.checked)}
-                        >
-                          1M
-                        </Checkbox>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Form.Item style={{ marginTop: 16 }}>
-                    <Space>
-                      <Button onClick={handleClaudeTestConnection} loading={claudeTesting}>测试连接</Button>
-                      <Button
-                        onClick={handleClaudeFetchModels}
-                        loading={claudeFetchingModels}
-                        icon={<DownloadOutlined />}
-                      >
-                        获取模型列表
-                      </Button>
-                    </Space>
-                  </Form.Item>
-
-                  {claudeTestResult && (
-                    <Alert
-                      style={{ marginBottom: 12 }}
-                      type={claudeTestResult.success ? 'success' : 'error'}
-                      message={claudeTestResult.success ? '连接成功' : '连接失败'}
-                      description={claudeTestResult.success
-                        ? `模型: ${claudeTestResult.model}`
-                        : claudeTestResult.error}
-                    />
-                  )}
-
-                  <Alert
-                    type="info"
-                    message="支持 Anthropic 官方 API 及兼容服务（如 DeepSeek API），只需配置对应的 API 地址和 Key 即可。"
-                    style={{ fontSize: 12 }}
-                  />
-                </>
-              )
-            }
           ]} />
 
           <Form.Item>

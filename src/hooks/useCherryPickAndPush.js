@@ -5,7 +5,7 @@
 import { message } from 'antd';
 import { normalizeVersion } from '../utils/versionBaseline';
 import { runCherryPickLoop } from './useCherryPickLoop';
-import { validateCustomBranches } from '../utils/workspaceHelpers';
+import { validateCustomBranches, ensureAuthorEmailCompliance } from '../utils/workspaceHelpers';
 
 /**
  * 遴选推送整合按钮处理函数 - 添加进度条和成功弹窗
@@ -24,11 +24,12 @@ export const useCherryPickAndPush = ({
   setSelectedCommits,
   setConflictModal,
   handleAutoMergeLanguageFiles,
-  handleClaudeResolveConflicts,
-  setConflictClaudeLoading,
   conflictResolveRef,
   loadCurrentBranch,
   loadCommits,
+  findCommitByHash,
+  settings,
+  setSettings,
 }) => {
   const handleCherryPickAndPush = async () => {
     if (selectedCommits.length === 0) {
@@ -62,6 +63,15 @@ export const useCherryPickAndPush = ({
 
     const totalOperations = effectiveBranches.length;
     const results = [];
+
+    // 校验选中提交的 author 邮箱合规性（不合规则弹窗获取替换邮箱）
+    const commitObjs = selectedCommits.map(h => findCommitByHash(h)).filter(Boolean);
+    const compliance = await ensureAuthorEmailCompliance({ commits: commitObjs, settings, setSettings });
+    if (!compliance.proceed) {
+      setLoading(false);
+      message.info('操作已取消');
+      return;
+    }
 
     // 检查是否有未提交的更改，如果有则自动 stash
     const hasUncommitted = await window.electronAPI.git.hasUncommittedChanges();
@@ -154,8 +164,6 @@ export const useCherryPickAndPush = ({
           targetBranch,
           setProgress: setCherryPickProgress,
           handleAutoMergeLanguageFiles,
-          handleClaudeResolveConflicts,
-          setConflictClaudeLoading,
           throwOnError: false,
           sourceVersion,
           targetVersion,
@@ -169,6 +177,8 @@ export const useCherryPickAndPush = ({
           setLoading,
           results,
           logPrefix: 'handleCherryPickAndPush',
+          invalidAuthorMap: compliance.invalidAuthorMap,
+          replacementEmail: compliance.replacementEmail,
         });
         if (loopResult.aborted) return;
 

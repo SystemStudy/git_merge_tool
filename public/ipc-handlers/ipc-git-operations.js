@@ -124,7 +124,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
       let log;
       if (skip > 0) {
-        const format = '%H%n%an%n%ad%n%s%n%b%n---END---';
+        const format = '%H%n%an%n%ae%n%ad%n%s%n%b%n---END---';
         log = await git.raw([
           'log',
           '-n', String(limit),
@@ -140,15 +140,16 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
           return {
             hash: parts[0],
             author_name: parts[1],
-            date: parts[2],
-            message: parts[3],
-            body: parts.slice(4).join('\n')
+            author_email: parts[2] || '',
+            date: parts[3],
+            message: parts[4],
+            body: parts.slice(5).join('\n')
           };
         });
 
         log = { all: parsedCommits };
       } else {
-        const format = '%H%n%an%n%ad%n%s%n%b%n---END---';
+        const format = '%H%n%an%n%ae%n%ad%n%s%n%b%n---END---';
         log = await git.raw([
           'log',
           '-n', String(limit),
@@ -163,9 +164,10 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
           return {
             hash: parts[0],
             author_name: parts[1],
-            date: parts[2],
-            message: parts[3],
-            body: parts.slice(4).join('\n')
+            author_email: parts[2] || '',
+            date: parts[3],
+            message: parts[4],
+            body: parts.slice(5).join('\n')
           };
         });
 
@@ -234,7 +236,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
       console.log(`[${timestamp}] [git-get-all-commits] 使用分支: "${branchToUse}"`);
 
-      const format = '%H%n%an%n%ad%n%s%n%b%n---END---';
+      const format = '%H%n%an%n%ae%n%ad%n%s%n%b%n---END---';
       const log = await git.raw([
         'log',
         '-n', '10000',
@@ -249,9 +251,10 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         return {
           hash: parts[0],
           author_name: parts[1],
-          date: parts[2],
-          message: parts[3],
-          body: parts.slice(4).join('\n')
+          author_email: parts[2] || '',
+          date: parts[3],
+          message: parts[4],
+          body: parts.slice(5).join('\n')
         };
       });
 
@@ -699,6 +702,25 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     } catch (error) {
       console.error(`[${timestamp}] [git-cherry-pick-abort] 失败: ${error.message}`);
       return { success: true };
+    }
+  });
+
+  ipcMain.handle('git-amend-author', async (event, authorName, authorEmail) => {
+    const timestamp = formatTimestamp();
+    console.log(`[${timestamp}] [git-amend-author] 修改 HEAD author 为: ${authorName} <${authorEmail}>`);
+
+    if (!getGit()) throw new Error('未打开项目');
+
+    try {
+      await getGit().raw([
+        'commit', '--amend', '--no-edit',
+        `--author=${authorName} <${authorEmail}>`
+      ]);
+      console.log(`[${timestamp}] [git-amend-author] 成功`);
+      return { success: true };
+    } catch (error) {
+      console.error(`[${timestamp}] [git-amend-author] 失败: ${error.message}`);
+      return { success: false, error: error.message };
     }
   });
 
