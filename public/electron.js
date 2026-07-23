@@ -197,7 +197,19 @@ async function openProject(projectPath) {
 
     // 初始化Git
     console.log(`[${timestamp}] [openProject] 初始化Git仓库...`);
-    currentGit = simpleGit(projectPath);
+    currentGit = simpleGit(projectPath, {
+      config: [],
+      timeout: {
+        block: 60000,
+      },
+      spawnOptions: {
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GIT_ASKPASS: '',
+        }
+      }
+    });
     currentProjectPath = projectPath;
 
     // 获取项目信息
@@ -248,7 +260,19 @@ async function checkGitRepository(dirPath) {
 
 // 获取项目信息
 async function getProjectInfo(projectPath) {
-  const git = simpleGit(projectPath);
+  const git = simpleGit(projectPath, {
+    config: [],
+    timeout: {
+      block: 60000,
+    },
+    spawnOptions: {
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: '',
+      }
+    }
+  });
   const remotes = await git.getRemotes(true);
   const branchSummary = await git.branchLocal();
   

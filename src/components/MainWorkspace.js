@@ -148,6 +148,11 @@ const MainWorkspace = ({ project, onClose }) => {
     });
   }, []);
 
+  // 清除所有选中记录
+  const handleClearSelection = useCallback(() => {
+    setSelectedCommits([]);
+  }, []);
+
   // 冲突解决相关函数
   const allFilesResolved = conflictModal.files.length > 0 && conflictModal.files.every(f => f.resolved);
 
@@ -611,6 +616,7 @@ const MainWorkspace = ({ project, onClose }) => {
           handleRefresh={handleRefresh}
           loadMoreCommits={loadMoreCommits}
           commitsListRef={commitsListRef}
+          onClearSelection={handleClearSelection}
         />
 
         <OperationPanel

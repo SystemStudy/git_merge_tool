@@ -14,6 +14,7 @@ import {
   UserOutlined,
   ClearOutlined,
   ReloadOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { CommitItem } from './CommitList';
 
@@ -33,17 +34,30 @@ const CommitListPanel = ({
   handleRefresh,
   loadMoreCommits,
   commitsListRef,
+  onClearSelection,
 }) => {
   return (
     <div className="commits-section">
       <div className="commits-toolbar">
-        <Search
-          placeholder="搜索提交..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{ width: 300 }}
-          prefix={<SearchOutlined />}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Search
+            placeholder="搜索提交..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={{ width: 300 }}
+            prefix={<SearchOutlined />}
+          />
+          {selectedCommitsSet.size > 0 && (
+            <span style={{ fontSize: '13px', color: '#1890ff', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              已选中 {selectedCommitsSet.size} 条记录
+              <CloseCircleOutlined
+                style={{ cursor: 'pointer', fontSize: '14px', color: '#999' }}
+                onClick={() => onClearSelection?.()}
+                title="取消全部选中"
+              />
+            </span>
+          )}
+        </div>
         <Space>
           <Button 
             icon={<UserOutlined />}

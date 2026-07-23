@@ -404,13 +404,77 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-push', async (event, branch) => {
     if (!getGit()) throw new Error('未打开项目');
-    try {
-      await getGit().push('origin', branch);
-      return { success: true };
-    } catch (error) {
-      console.error(`[git-push] 推送失败: ${error.message}`);
-      throw new Error(`推送失败: ${error.message}。请先拉取远程更新，或手动解决冲突后再推送。`);
+    
+    const maxRetries = 2;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[git-push] 第 ${attempt} 次尝试推送分支 ${branch}`);
+        
+        // 使用 push 的数组参数形式，添加 --porcelain 获取标准化输出
+        await getGit().push(['origin', branch, '--porcelain']);
+        
+        console.log(`[git-push] 推送成功: ${branch}`);
+        return { success: true };
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`[git-push] 第 ${attempt} 次推送失败: ${error.message}`);
+        
+        // 检查是否是认证相关错误
+        const isAuthError = 
+          error.message.includes('403') || 
+          error.message.includes('401') ||
+          error.message.includes('Authentication failed') ||
+          error.message.includes('could not read Username') ||
+          error.message.includes('could not read Password') ||
+          error.message.includes('Invalid username or password');
+        
+        if (isAuthError) {
+          console.warn('[git-push] 检测到认证失败');
+          
+          // 如果不是最后一次尝试，等待后重试
+          if (attempt < maxRetries) {
+            console.log(`[git-push] 等待 1 秒后重试...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          
+          // 所有重试失败，抛出详细的用户友好错误
+          throw new Error(
+            `推送失败：Git 认证错误\n\n` +
+            `错误详情：${error.message}\n\n` +
+            `可能原因：\n` +
+            `• HTTPS 凭证已过期或无效\n` +
+            `• Windows 凭证管理器中的凭证状态异常\n` +
+            `• Git Credential Manager 进程被锁定\n\n` +
+            `建议操作：\n` +
+            `1. 在命令行中手动执行一次 "git push origin ${branch}" 完成认证\n` +
+            `2. 或打开"控制面板 → 凭据管理器 → Windows 凭据"，删除相关的 Git 凭证\n` +
+            `3. 或考虑改用 SSH 方式（git@host:path）替代 HTTPS 认证\n` +
+            `4. 如果问题持续，尝试重启计算机清除锁定的进程句柄`
+          );
+        }
+        
+        // 非认证错误（如 non-fast-forward、网络错误等）
+        if (attempt === maxRetries) {
+          throw new Error(
+            `推送失败: ${error.message}\n\n` +
+            `请检查：\n` +
+            `• 是否需要先拉取远程更新（git pull）\n` +
+            `• 是否存在冲突需要手动解决\n` +
+            `• 网络连接是否正常`
+          );
+        }
+        
+        // 等待后重试
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
+    
+    // 理论上不会到达这里
+    throw lastError || new Error('推送失败：未知错误');
   });
 
   ipcMain.handle('git-create-branch', async (event, branchName, baseBranch) => {
