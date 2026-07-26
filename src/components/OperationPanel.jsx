@@ -9,6 +9,7 @@ import {
   Radio,
   Checkbox,
   AutoComplete,
+  Spin,
 } from 'antd';
 import {
   WarningOutlined,
@@ -43,14 +44,21 @@ const OperationPanel = ({
   versionDetecting,
   selectedCommitsCount,
   isDetectConflictDisabled,
+  remoteRepos = [],
+  selectedRemoteRepos = [],
+  setSelectedRemoteRepos,
+  remoteRepoBranches = {},
+  selectedRemoteBranches = {},
+  setSelectedRemoteBranches,
+  loadingRemoteRepos = false,
 }) => {
   return (
     <div className="operations-panel">
-      <Card title="合并操作" size="small">
+      <Card size="small" styles={{ body: { padding: '16px 20px' } }}>
         <div className="merge-type-section">
-          <label className="section-label">合并类型:</label>
-          <Radio.Group 
-            value={mergeType} 
+          <label className="section-label">合并类型</label>
+          <Radio.Group
+            value={mergeType}
             onChange={(e) => {
               setMergeType(e.target.value);
               setSelectedTargetBranches([]);
@@ -59,6 +67,8 @@ const OperationPanel = ({
               }
             }}
             className="merge-type-radio-group"
+            optionType="button"
+            buttonStyle="solid"
           >
             {MERGE_TYPES.map(type => (
               <Radio.Button key={type.value} value={type.value}>
@@ -68,8 +78,61 @@ const OperationPanel = ({
           </Radio.Group>
         </div>
 
+        {remoteRepos.length > 0 && (
+          <>
+            <div className="remote-repos-section">
+              <label className="section-label">外部仓库（可选）</label>
+              {loadingRemoteRepos ? (
+                <Spin size="small" />
+              ) : (
+                <Checkbox.Group
+                  options={remoteRepos.map(repo => ({
+                    label: repo.name,
+                    value: repo.id
+                  }))}
+                  value={selectedRemoteRepos}
+                  onChange={setSelectedRemoteRepos}
+                />
+              )}
+            </div>
+
+            {selectedRemoteRepos.length > 0 && (
+              <div className="remote-repos-branches-section">
+                {selectedRemoteRepos.map(repoId => {
+                  const repo = remoteRepos.find(r => r.id === repoId);
+                  const repoBranches = remoteRepoBranches[repoId] || [];
+                  const selectedBranches = selectedRemoteBranches[repoId] || [];
+
+                  return (
+                    <div key={repoId} className="remote-repo-branch-group">
+                      <label className="section-label">{repo.name} 目标分支</label>
+                      {repoBranches.length === 0 ? (
+                        <Spin size="small" />
+                      ) : (
+                        <Checkbox.Group
+                          options={repoBranches.map(branch => ({
+                            label: branch,
+                            value: branch
+                          }))}
+                          value={selectedBranches}
+                          onChange={(values) => {
+                            setSelectedRemoteBranches({
+                              ...selectedRemoteBranches,
+                              [repoId]: values
+                            });
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
         <div className="target-branches-section">
-          <label className="section-label">目标分支:</label>
+          <label className="section-label">目标分支</label>
           {mergeType === 'custom' ? (
             <div className="custom-branches-input-list">
               {customBranchInputs.map((value, index) => (
@@ -133,7 +196,6 @@ const OperationPanel = ({
             onClick={handleDetectConflicts}
             loading={conflictDetecting}
             disabled={isDetectConflictDisabled}
-            style={{ marginLeft: 8 }}
           >
             检测冲突
           </Button>
@@ -143,7 +205,6 @@ const OperationPanel = ({
             onClick={handleDetectChanges}
             loading={changeDetecting}
             disabled={selectedCommitsCount === 0 || selectedTargetBranches.length === 0 || changeDetecting}
-            style={{ marginLeft: 8 }}
           >
             检测变更
           </Button>
@@ -154,7 +215,6 @@ const OperationPanel = ({
               onClick={handleDetectVersion}
               loading={versionDetecting}
               disabled={selectedCommitsCount !== 1 || selectedTargetBranches.length === 0 || versionDetecting}
-              style={{ marginLeft: 8 }}
             >
               检测版本
             </Button>

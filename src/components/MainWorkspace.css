@@ -1,6 +1,6 @@
 .main-workspace {
   height: 100%;
-  background: #f0f2f5;
+  background: var(--color-bg-app);
 }
 
 .loading-container {
@@ -8,79 +8,143 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2f5;
+  background: var(--color-bg-app);
 }
 
+/* ===== Header ===== */
 .workspace-header {
-  background: #fff;
-  padding: 0 24px;
+  background: var(--color-bg-surface);
+  padding: 0 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
   z-index: 10;
-  height: 64px;
-  line-height: 64px;
+  height: 56px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.workspace-header .ant-space {
+  align-items: center;
+}
+
+.workspace-header .ant-btn-default {
+  height: 32px;
+  border-color: var(--color-border) !important;
+  font-size: 13px;
 }
 
 .project-name {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 8px;
 }
 
+/* 分支 Tag */
+.workspace-header .branch-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 14px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid rgba(79, 110, 247, 0.15);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 22px;
+  height: 32px;
+  margin-left: 4px;
+}
+
+.workspace-header .branch-tag:hover {
+  background: var(--color-primary-light);
+  border-color: rgba(79, 110, 247, 0.3);
+}
+
+/* 回到当前分支按钮 */
+.workspace-header .back-to-branch-btn {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border) !important;
+}
+
+/* ===== Content ===== */
 .workspace-content {
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 16px 20px;
   gap: 16px;
   overflow: hidden;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 56px);
 }
 
+/* ===== Commits Section ===== */
 .commits-section {
   flex: 1;
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-light);
 }
 
 .commits-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-}
-
-.commits-table {
-  flex: 1;
-  overflow: auto;
-}
-
-.commit-hash {
-  font-family: 'Consolas', monospace;
-  font-size: 12px;
-  background: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .commits-list {
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
   overflow-y: auto;
   overflow-x: hidden;
+  background: var(--color-bg-surface);
+}
+
+/* ===== Commit Item ===== */
+.commit-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.commit-item:last-child {
+  border-bottom: none;
 }
 
 .commit-item:hover:not(.selected) {
-  background-color: #fafafa;
+  background-color: var(--color-bg-hover);
 }
 
 .commit-item.selected {
-  background-color: #e6f7ff !important;
-  border-left: 3px solid #1890ff;
+  background-color: var(--color-bg-selected) !important;
+}
+
+.commit-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-primary);
+  border-radius: 0 2px 2px 0;
 }
 
 .commit-item .ant-checkbox {
@@ -102,63 +166,36 @@
 }
 
 .commit-item .commit-meta {
-  color: #999;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   min-width: 120px;
 }
 
-.merge-progress-modal .ant-modal-body {
-  padding: 24px;
+.commit-hash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--color-bg-app);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.5px;
 }
 
-.merge-result-modal .ant-modal-body {
-  padding: 16px;
-}
-
-.merge-result-card {
-  border-left: 3px solid;
-  background: #fafafa;
-}
-
-.merge-result-card.success {
-  border-left-color: #52c41a;
-}
-
-.merge-result-card.error {
-  border-left-color: #ff4d4f;
-}
-
-.merge-result-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.merge-result-info strong {
-  color: #262626;
-  font-weight: 500;
-}
-
-.merge-result-link {
-  word-break: break-all;
-  color: #1890ff;
-  text-decoration: none;
-}
-
-.merge-result-link:hover {
-  text-decoration: underline;
-}
-
-/* 操作面板 - 移除日志后调整为单列 */
+/* ===== Operations Panel ===== */
 .operations-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   min-height: auto;
 }
 
-/* 合并类型区域样式 */
+.operations-panel .ant-card {
+  border: none !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
 .merge-type-section {
   margin-bottom: 16px;
 }
@@ -167,10 +204,12 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #262626;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* 横排布局的合并类型 */
 .merge-type-radio-group {
   display: flex;
   flex-direction: row;
@@ -182,9 +221,9 @@
   flex: 1;
   min-width: 100px;
   text-align: center;
+  border-radius: var(--radius-sm) !important;
 }
 
-/* 目标分支区域 */
 .target-branches-section {
   margin-bottom: 16px;
 }
@@ -197,53 +236,82 @@
 
 .branches-checkbox-group .ant-checkbox-wrapper {
   margin-left: 0;
-  padding: 6px 12px;
-  background: #f5f5f5;
-  border-radius: 4px;
-  border: 1px solid #d9d9d9;
+  padding: 6px 14px;
+  background: var(--color-bg-app);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+  font-size: 13px;
 }
 
 .branches-checkbox-group .ant-checkbox-wrapper:hover {
-  border-color: #1890ff;
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
 }
 
-/* 操作按钮 */
+.branches-checkbox-group .ant-checkbox-wrapper.ant-checkbox-wrapper-checked {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* Action buttons */
 .action-buttons {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
 }
 
-/* 表格样式优化 */
-.commits-table .ant-table-thead > tr > th {
-  background: #fafafa;
+/* ===== Merge Result Cards ===== */
+.merge-progress-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.merge-result-modal .ant-modal-body {
+  padding: 16px;
+}
+
+.merge-result-card {
+  border-left: 3px solid;
+  background: var(--color-bg-hover);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 12px 16px;
+}
+
+.merge-result-card.success {
+  border-left-color: var(--color-success);
+}
+
+.merge-result-card.error {
+  border-left-color: var(--color-error);
+}
+
+.merge-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.merge-result-info strong {
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 
-.commits-table .ant-table-tbody > tr:hover > td {
-  background: #e6f7ff;
+.merge-result-link {
+  word-break: break-all;
+  color: var(--color-primary);
+  text-decoration: none;
 }
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.merge-result-link:hover {
+  text-decoration: underline;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-/* 自定义分支输入区域 */
+/* ===== Custom Branch Inputs ===== */
 .custom-branches-input-list {
   display: flex;
   flex-direction: column;
@@ -259,4 +327,22 @@
 .custom-branch-autocomplete {
   flex: 1;
   min-width: 200px;
+}
+
+/* ===== Remote Repos ===== */
+.remote-repos-section {
+  margin-bottom: 16px;
+}
+
+.remote-repos-branches-section {
+  margin-left: 24px;
+  margin-bottom: 16px;
+}
+
+.remote-repo-branch-group {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: var(--color-bg-app);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
 }

@@ -4,7 +4,6 @@ import {
   Layout,
   Button,
   Space,
-  Tag,
   message,
   Drawer,
   Spin,
@@ -15,6 +14,7 @@ import {
   DownloadOutlined,
   BranchesOutlined,
   GlobalOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import './MainWorkspace.css';
 import { mergeMultiLanguageContent } from '../utils/mergeUtils';
@@ -39,6 +39,7 @@ import {
 import { useDetectOperations } from '../hooks/useDetectOperations';
 import { useCherryPickAndPush } from '../hooks/useCherryPickAndPush';
 import { useCreateMergeBranch } from '../hooks/useCreateMergeBranch';
+import { useRemoteCherryPick } from '../hooks/useRemoteCherryPick';
 
 const { Header, Content } = Layout;
 
@@ -106,6 +107,13 @@ const MainWorkspace = ({ project, onClose }) => {
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
   const [, setConflictAutoMerging] = useState(false);
   const conflictResolveRef = useRef(null);
+
+  // 外部仓库相关状态
+  const [remoteRepos, setRemoteRepos] = useState([]);
+  const [selectedRemoteRepos, setSelectedRemoteRepos] = useState([]);
+  const [remoteRepoBranches, setRemoteRepoBranches] = useState({});
+  const [selectedRemoteBranches, setSelectedRemoteBranches] = useState({});
+  const [loadingRemoteRepos, setLoadingRemoteRepos] = useState(false);
 
   // 优化：使用 ref 存储 selectedCommits 的 Set 以提高查找性能
   const selectedCommitsRef = useRef(new Set());
@@ -238,6 +246,9 @@ const MainWorkspace = ({ project, onClose }) => {
         await loadBranches();
         console.log(`[${timestamp}] [init] 分支加载完成`);
         
+        await loadRemoteRepos();
+        console.log(`[${timestamp}] [init] 外部仓库加载完成`);
+        
         const branch = await loadCurrentBranch();
         console.log(`[${timestamp}] [init] 当前分支加载完成`);
 
@@ -338,6 +349,97 @@ const MainWorkspace = ({ project, onClose }) => {
     }
   };
 
+  const loadRemoteRepos = async () => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [loadRemoteRepos] 开始加载外部仓库列表`);
+    
+    try {
+      console.log(`[${timestamp}] [loadRemoteRepos] 调用 API 获取仓库列表...`);
+      const repos = await window.electronAPI.remoteRepos.list();
+      
+      console.log(`[${timestamp}] [loadRemoteRepos] 获取到 ${repos?.length || 0} 个仓库`);
+      setRemoteRepos(repos || []);
+      console.log(`[${timestamp}] [loadRemoteRepos] 仓库列表已设置到状态`);
+    } catch (error) {
+      console.error(`[${timestamp}] [loadRemoteRepos] 加载仓库列表失败:`, error);
+    }
+  };
+
+  // 监听选中仓库变化，自动加载分支
+  useEffect(() => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [useEffect] 选中仓库变化，开始加载分支`);
+    
+    if (selectedRemoteRepos.length === 0) {
+      setRemoteRepoBranches({});
+      return;
+    }
+
+    setLoadingRemoteRepos(true);
+    
+    const loadBranchesForRepos = async () => {
+      try {
+        const newBranches = {};
+        
+        for (const repoId of selectedRemoteRepos) {
+          // 使用函数式更新来读取缓存，避免将 remoteRepoBranches 加入依赖数组
+          let cachedBranches = null;
+          setRemoteRepoBranches(prev => {
+            if (prev[repoId]) {
+              cachedBranches = prev[repoId];
+            }
+            return prev;
+          });
+          
+          // 如果已缓存，使用缓存
+          if (cachedBranches) {
+            newBranches[repoId] = cachedBranches;
+            continue;
+          }
+
+          console.log(`[${timestamp}] [loadBranchesForRepos] 加载仓库 ${repoId} 的分支...`);
+          
+          // 查找仓库信息
+          const repo = remoteRepos.find(r => r.id === repoId);
+          if (!repo) {
+            console.warn(`[${timestamp}] [loadBranchesForRepos] 未找到仓库 ${repoId}`);
+            continue;
+          }
+
+          // Clone 仓库（如果尚未 clone）
+          const cloneResult = await window.electronAPI.remoteRepos.clone({ 
+            repoId, 
+            url: repo.url 
+          });
+          
+          if (!cloneResult.success) {
+            console.error(`[${timestamp}] [loadBranchesForRepos] Clone 失败: ${cloneResult.error}`);
+            message.error(`Clone 仓库 ${repo.name} 失败: ${cloneResult.error}`);
+            continue;
+          }
+
+          // 获取分支列表
+          const branches = await window.electronAPI.remoteRepos.getBranches({ 
+            repoPath: cloneResult.repoPath 
+          });
+          
+          console.log(`[${timestamp}] [loadBranchesForRepos] 获取到 ${branches?.length || 0} 个分支`);
+          newBranches[repoId] = branches || [];
+        }
+        
+        setRemoteRepoBranches(prev => ({ ...prev, ...newBranches }));
+        console.log(`[${timestamp}] [loadBranchesForRepos] 分支加载完成`);
+      } catch (error) {
+        console.error(`[${timestamp}] [loadBranchesForRepos] 加载分支失败:`, error);
+        message.error('加载外部仓库分支失败');
+      } finally {
+        setLoadingRemoteRepos(false);
+      }
+    };
+
+    loadBranchesForRepos();
+  }, [selectedRemoteRepos, remoteRepos]);
+
   const loadCommits = async (branch, isInitial = true) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [loadCommits] 开始加载提交记录`);
@@ -435,6 +537,12 @@ const MainWorkspace = ({ project, onClose }) => {
     setShowMyCommits(false);
     setAllCommits([]);
     allCommitsLoadedRef.current = false;
+    // 先从远程 fetch 最新提交
+    try {
+      await window.electronAPI.git.fetch();
+    } catch (e) {
+      console.warn('[handleRefresh] fetch 失败:', e.message);
+    }
     if (viewBranch) {
       await loadCommits(viewBranch, true);
     }
@@ -462,6 +570,33 @@ const MainWorkspace = ({ project, onClose }) => {
     setSettings,
   });
 
+  // 跨仓库遴选推送
+  const handleRemoteCherryPick = useRemoteCherryPick({
+    selectedCommits,
+    selectedRemoteRepos,
+    remoteRepoBranches,
+    selectedRemoteBranches,
+    remoteRepos,
+    sourceProjectPath: project?.path,
+    setLoading,
+    setCherryPickProgress,
+    setCherryPickResultModal,
+  });
+
+  // 整合遴选推送：先执行当前仓库，再执行外部仓库
+  const handleCombinedCherryPickAndPush = async () => {
+    await handleCherryPickAndPush();
+    const remoteResult = await handleRemoteCherryPick();
+    if (remoteResult?.hasRemoteWork && remoteResult.results) {
+      setCherryPickResultModal(prev => ({
+        ...prev,
+        visible: true,
+        success: (prev.results || []).every(r => r.success) && remoteResult.results.every(r => r.success),
+        results: [...(prev.results || []), ...remoteResult.results]
+      }));
+    }
+  };
+
   // 创建合并分支操作（抽取到 hook）
   const handleCreateMergeBranch = useCreateMergeBranch({
     selectedCommits,
@@ -482,6 +617,10 @@ const MainWorkspace = ({ project, onClose }) => {
     loadCurrentBranch,
     loadBranches,
     setSettings,
+    selectedRemoteRepos,
+    selectedRemoteBranches,
+    remoteRepos,
+    sourceProjectPath: project?.path,
   });
 
   const { handleDetectConflicts, handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
@@ -552,9 +691,8 @@ const MainWorkspace = ({ project, onClose }) => {
             返回
           </Button>
           <span className="project-name">{project?.info?.name}</span>
-          <Tag
-            color="blue"
-            style={{ cursor: 'pointer' }}
+          <span
+            className="branch-tag"
             onClick={() => {
               setSelectedViewBranch(viewBranch);
               setBranchSearchText('');
@@ -562,10 +700,9 @@ const MainWorkspace = ({ project, onClose }) => {
             }}
           >
             <BranchesOutlined /> {viewBranch}
-          </Tag>
+          </span>
           {viewBranch !== currentBranch && (
             <Button
-              size="small"
               icon={<ReloadOutlined />}
               onClick={() => {
                 setViewBranch(currentBranch);
@@ -578,7 +715,6 @@ const MainWorkspace = ({ project, onClose }) => {
             </Button>
           )}
           <Button
-            size="small"
             icon={<BranchesOutlined />}
             onClick={() => {
               setSelectedViewBranch(viewBranch);
@@ -592,6 +728,9 @@ const MainWorkspace = ({ project, onClose }) => {
         <Space>
           <Button icon={<GlobalOutlined />} onClick={handleOpenInBrowser}>
             浏览器打开
+          </Button>
+          <Button icon={<SettingOutlined />} onClick={() => setSettingsVisible(true)}>
+            设置
           </Button>
         </Space>
       </Header>
@@ -623,7 +762,7 @@ const MainWorkspace = ({ project, onClose }) => {
           branches={branches}
           settings={settings}
           loading={loading}
-          handleCherryPickAndPush={handleCherryPickAndPush}
+          handleCherryPickAndPush={handleCombinedCherryPickAndPush}
           handleCreateMergeBranch={handleCreateMergeBranch}
           handleDetectConflicts={handleDetectConflicts}
           handleDetectChanges={handleDetectChanges}
@@ -633,6 +772,13 @@ const MainWorkspace = ({ project, onClose }) => {
           versionDetecting={versionDetecting}
           selectedCommitsCount={selectedCommits.length}
           isDetectConflictDisabled={isDetectConflictDisabled}
+          remoteRepos={remoteRepos}
+          selectedRemoteRepos={selectedRemoteRepos}
+          setSelectedRemoteRepos={setSelectedRemoteRepos}
+          remoteRepoBranches={remoteRepoBranches}
+          selectedRemoteBranches={selectedRemoteBranches}
+          setSelectedRemoteBranches={setSelectedRemoteBranches}
+          loadingRemoteRepos={loadingRemoteRepos}
         />
       </Content>
 

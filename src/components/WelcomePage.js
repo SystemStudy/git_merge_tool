@@ -5,13 +5,9 @@ import {
   Space,
   Empty,
   Popconfirm,
-  Tag,
   Spin,
   Drawer,
-  Form,
   Input,
-  Tabs,
-  Alert,
   message
 } from 'antd';
 import {
@@ -20,9 +16,12 @@ import {
   DeleteOutlined,
   SettingOutlined,
   BranchesOutlined,
-  SearchOutlined
+  SearchOutlined,
+  FileZipOutlined,
+  GithubOutlined
 } from '@ant-design/icons';
 import './WelcomePage.css';
+import SettingsForm from './SettingsForm';
 
 const { Title, Text } = Typography;
 
@@ -31,8 +30,6 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settings, setSettings] = useState({});
-  const [testResult, setTestResult] = useState(null);
-  const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
@@ -86,40 +83,30 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
     }
   };
 
-  const handleTestToken = async () => {
-    const values = form.getFieldsValue();
-    if (!values.gitlabServerUrl || !values.gitlabAccessToken) {
-      message.warning('请先填写GitLab地址和令牌');
-      return;
-    }
-
-    try {
-      const result = await window.electronAPI.gitlab.testToken(
-        values.gitlabServerUrl,
-        values.gitlabAccessToken
-      );
-      setTestResult(result);
-      if (result.success) {
-        message.success('令牌验证成功');
-      } else {
-        message.error(result.error);
-      }
-    } catch (error) {
-      message.error('测试失败: ' + error.message);
-    }
-  };
-
   const handleSaveSettings = async (values) => {
     try {
-      // 以现有 settings 为底合并表单值，避免未在表单中出现的字段（如分支预设）被清空
       const newSettings = { ...settings, ...values };
-
       await window.electronAPI.settings.save(newSettings);
       setSettings(newSettings);
       message.success('设置已保存');
       setSettingsVisible(false);
     } catch (error) {
       message.error('保存设置失败: ' + error.message);
+    }
+  };
+
+  const handleExportLog = async () => {
+    try {
+      const result = await window.electronAPI.system.exportLogZip();
+      if (result.success) {
+        message.success(`日志已导出至: ${result.path}`);
+      } else if (result.canceled) {
+        // 用户取消，不做提示
+      } else {
+        message.error(result.error || '导出失败');
+      }
+    } catch (error) {
+      message.error('导出日志失败: ' + error.message);
     }
   };
 
@@ -183,7 +170,9 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
                   >
                     <div className="project-card-header">
                       <span className="project-card-name">{project.name}</span>
-                      <Tag color="blue">Git</Tag>
+                      <div className="project-card-git-icon">
+                        <GithubOutlined />
+                      </div>
                     </div>
                     <Text type="secondary" className="project-card-path">
                       {getParentPath(project.path)}
@@ -204,6 +193,7 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
                           danger
                           size="small"
                           icon={<DeleteOutlined />}
+                          className="project-card-delete"
                           onClick={(e) => e.stopPropagation()}
                         />
                       </Popconfirm>
@@ -248,106 +238,22 @@ const WelcomePage = ({ onProjectSelect, loading }) => {
         open={settingsVisible}
         onClose={() => setSettingsVisible(false)}
         rootStyle={{ top: 40 }}
+        styles={{ body: { padding: '16px 24px' } }}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={settings}
-          onFinish={handleSaveSettings}
+        <SettingsForm
+          settings={settings}
+          onSave={handleSaveSettings}
+          showRemoteRepos={false}
+        />
+        <Button
+          block
+          icon={<FileZipOutlined />}
+          onClick={handleExportLog}
+          className="export-log-btn"
+          style={{ marginTop: 12 }}
         >
-          <Tabs items={[
-            {
-              key: 'gitlab',
-              label: 'GitLab设置',
-              children: (
-                <>
-                  <Form.Item
-                    label="GitLab服务器地址"
-                    name="gitlabServerUrl"
-                    rules={[{ required: true, message: '请输入GitLab地址' }]}
-                  >
-                    <Input placeholder="https://git.landray.com.cn/" />
-                  </Form.Item>
-                  <Form.Item
-                    label="GitLab访问令牌"
-                    name="gitlabAccessToken"
-                  >
-                    <Input.Password placeholder="输入您的Personal Access Token" />
-                  </Form.Item>
-                  <Button onClick={handleTestToken}>测试令牌</Button>
-                  {testResult && (
-                    <Alert
-                      style={{ marginTop: 16 }}
-                      type={testResult.success ? 'success' : 'error'}
-                      message={testResult.success ? '验证成功' : '验证失败'}
-                      description={testResult.success ? `用户: ${testResult.user?.name}` : testResult.error}
-                    />
-                  )}
-                </>
-              )
-            },
-            {
-              key: 'branches',
-              label: '分支配置',
-              children: (
-                <>
-                  <Form.Item
-                    label="提测目标分支 (每行一个)"
-                    name="testBranches"
-                  >
-                    <Input.TextArea rows={4} />
-                  </Form.Item>
-                  <Form.Item
-                    label="入库目标分支 (每行一个)"
-                    name="releaseBranches"
-                  >
-                    <Input.TextArea rows={4} />
-                  </Form.Item>
-                  <Form.Item
-                    label="Bug提测目标分支 (每行一个)"
-                    name="bugTestBranches"
-                  >
-                    <Input.TextArea rows={4} />
-                  </Form.Item>
-                </>
-              )
-            },
-            {
-              key: 'general',
-              label: '常规设置',
-              children: (
-                <>
-                  <Button
-                    type="default"
-                    onClick={async () => {
-                      try {
-                        const result = await window.electronAPI.system.exportLogZip();
-                        if (result.success) {
-                          message.success(`日志已导出至: ${result.path}`);
-                        } else if (result.canceled) {
-                          // 用户取消，不做提示
-                        } else {
-                          message.error(result.error || '导出失败');
-                        }
-                      } catch (error) {
-                        message.error('导出日志失败: ' + error.message);
-                      }
-                    }}
-                    block
-                  >
-                    导出当前日志
-                  </Button>
-                </>
-              )
-            },
-          ]} />
-
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block>
-              保存设置
-            </Button>
-          </Form.Item>
-        </Form>
+          导出当前日志
+        </Button>
       </Drawer>
     </div>
   );
