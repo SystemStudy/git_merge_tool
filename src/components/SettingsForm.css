@@ -1,0 +1,150 @@
+/* ===== Settings Form ===== */
+.settings-form .settings-tab-content {
+  padding: 16px 0 8px;
+}
+
+/* Form items */
+.settings-form .ant-form-item-label > label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.settings-form .ant-input,
+.settings-form .ant-input-password {
+  border-radius: var(--radius-sm) !important;
+}
+
+.settings-form .ant-input:focus,
+.settings-form .ant-input-password:focus,
+.settings-form .ant-input-focused {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.1) !important;
+}
+
+/* Tabs 样式覆盖 */
+.settings-tabs .ant-tabs-tab {
+  padding: 12px 16px !important;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.settings-tabs .ant-tabs-tab:hover {
+  color: var(--color-primary);
+}
+
+.settings-tabs .ant-tabs-tab-active {
+  color: var(--color-primary) !important;
+}
+
+.settings-tabs .ant-tabs-ink-bar {
+  background: var(--color-primary) !important;
+  height: 2px !important;
+}
+
+.settings-tabs .ant-tabs-nav {
+  margin-bottom: 0 !important;
+}
+
+/* Test token button */
+.test-token-btn {
+  margin-top: 4px;
+}
+
+/* ===== Remote Repos Manager ===== */
+.repos-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.repos-manager-header-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.repo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  transition: all 0.2s ease;
+}
+
+.repo-item:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.repo-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.repo-item-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  flex-shrink: 0;
+  min-width: 60px;
+}
+
+.repo-item-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.repo-item-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+}
+
+/* Add form */
+.repo-add-form {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-app);
+}
+
+.repo-add-form .ant-input {
+  border-radius: var(--radius-sm) !important;
+}
+
+.repo-add-form .ant-input:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.1) !important;
+}
+
+/* Save button */
+.settings-save-btn {
+  height: 42px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--radius-sm) !important;
+  margin-top: 8px;
+}

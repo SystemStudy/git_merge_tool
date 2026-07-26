@@ -5,8 +5,7 @@ import {
 import {
   BranchesOutlined, CopyOutlined, SearchOutlined
 } from '@ant-design/icons';
-
-const { Search } = Input;
+import './ProgressModals.css';
 
 /**
  * 合并分支进度 Modal
@@ -23,13 +22,13 @@ export function MergeProgressModal({ mergeProgress }) {
       zIndex={1000}
       className="merge-progress-modal"
     >
-      <div style={{ padding: '20px 0' }}>
+      <div className="modal-content-padding" style={{ padding: '20px 0' }}>
         <Progress
           percent={Math.round((mergeProgress.current / mergeProgress.total) * 100)}
           status="active"
           format={(percent) => `${percent}%`}
         />
-        <div style={{ marginTop: 16, textAlign: 'center', color: '#666' }}>
+        <div className="modal-status-text">
           {mergeProgress.status}
         </div>
         {mergeProgress.results.length > 0 && (
@@ -217,24 +216,15 @@ export function ConflictResolveModal({ conflictModal, allFilesResolved, handleCo
           showIcon
           style={{ marginBottom: 16 }}
         />
-        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#333' }}>
+        <div className="conflict-section-label">
           冲突文件（共 {conflictModal.files.length} 个）：
         </div>
         {conflictModal.files.map((file, index) => (
           <div
             key={index}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '8px 12px',
-              marginBottom: 6,
-              border: '1px solid #f0f0f0',
-              borderRadius: 6,
-              background: file.resolved ? '#f6ffed' : '#fff'
-            }}
+            className={`conflict-file-item ${file.resolved ? 'resolved' : ''}`}
           >
-            <span style={{ flex: 1, fontSize: 13, fontFamily: 'Monaco, Consolas, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span className="conflict-file-path">
               {file.path}
             </span>
             <Space>
@@ -272,13 +262,13 @@ export function CherryPickProgressModal({ cherryPickProgress }) {
       zIndex={1000}
       className="merge-progress-modal"
     >
-      <div style={{ padding: '20px 0' }}>
+      <div className="modal-content-padding" style={{ padding: '20px 0' }}>
         <Progress
           percent={Math.round((cherryPickProgress.current / cherryPickProgress.total) * 100)}
           status="active"
           format={(percent) => `${percent}%`}
         />
-        <div style={{ marginTop: 16, textAlign: 'center', color: '#666' }}>
+        <div className="modal-status-text">
           {cherryPickProgress.status}
         </div>
         {cherryPickProgress.results.length > 0 && (
@@ -424,12 +414,12 @@ export function ConflictProgressModal({ conflictProgress }) {
       maskClosable={false}
       width={500}
     >
-      <div style={{ padding: '10px 0' }}>
+      <div className="modal-content-padding">
         <Progress
           percent={conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}
           status="active"
         />
-        <div style={{ marginTop: 8, color: '#666' }}>
+        <div className="modal-status-text" style={{ marginTop: 8 }}>
           {conflictProgress.status}
         </div>
       </div>
@@ -506,12 +496,12 @@ export function ChangeDetectProgressModal({ changeDetectProgress }) {
       closable={false}
       width={500}
     >
-      <div style={{ padding: '20px 0' }}>
+      <div className="modal-content-padding" style={{ padding: '20px 0' }}>
         <Progress
           percent={changeDetectProgress.total > 0 ? Math.round((changeDetectProgress.current / changeDetectProgress.total) * 100) : 0}
           status={changeDetectProgress.current < changeDetectProgress.total ? 'active' : 'success'}
         />
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
+        <div className="modal-status-text">
           {changeDetectProgress.status}
         </div>
       </div>
@@ -539,7 +529,7 @@ export function ChangeDetectResultModal({ changeDetectResultModal, setChangeDete
       ]}
       width={550}
     >
-      <div style={{ padding: '10px 0' }}>
+      <div className="modal-content-padding">
         {changeDetectResultModal.allExist ? (
           // 全部存在 — 简单提示即可
           <Alert
@@ -564,7 +554,7 @@ export function ChangeDetectResultModal({ changeDetectResultModal, setChangeDete
             {changeDetectResultModal.results.map((r, i) => (
               <div key={i} style={{ marginBottom: 6, fontSize: 14 }}>
                 <span style={{ fontWeight: 500 }}>{r.targetBranch}:</span>{' '}
-                <span style={{ color: Object.values(r.commits || {})[0] ? '#52c41a' : '#ff4d4f', fontWeight: 500 }}>
+                <span style={{ color: Object.values(r.commits || {})[0] ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 500 }}>
                   {Object.values(r.commits || {})[0] ? '存在' : '不存在'}
                 </span>
               </div>
@@ -582,11 +572,11 @@ export function ChangeDetectResultModal({ changeDetectResultModal, setChangeDete
                     <div>
                       <p style={{ marginBottom: 8 }}>以下提交在部分目标分支中不存在：</p>
                       {missing.map(([subject, branches], i) => (
-                        <div key={i} style={{ marginBottom: 6, padding: '6px 8px', background: '#fff2f0', borderRadius: 4 }}>
-                          <div style={{ color: '#cf1322', fontWeight: 500, marginBottom: 4 }}>
+                        <div key={i} className="missing-commit-item">
+                          <div className="missing-commit-subject">
                             {'\u2717'} {subject}
                           </div>
-                          <div style={{ fontSize: 12, color: '#666' }}>
+                          <div className="missing-commit-branches">
                             缺失分支: {branches.join(', ')}
                           </div>
                         </div>
@@ -600,7 +590,7 @@ export function ChangeDetectResultModal({ changeDetectResultModal, setChangeDete
               style={{ marginBottom: 16 }}
             />
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: '#333' }}>各分支检测详情</div>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, color: 'var(--color-text-primary)' }}>各分支检测详情</div>
               {changeDetectResultModal.results.map((result, index) => (
                 <Card
                   key={index}
@@ -639,12 +629,12 @@ export function VersionDetectProgressModal({ versionDetectProgress }) {
       maskClosable={false}
       width={500}
     >
-      <div style={{ padding: '20px 0' }}>
+      <div className="modal-content-padding" style={{ padding: '20px 0' }}>
         <Progress
           percent={versionDetectProgress.total > 0 ? Math.round((versionDetectProgress.current / versionDetectProgress.total) * 100) : 0}
           status={versionDetectProgress.current < versionDetectProgress.total ? 'active' : 'success'}
         />
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
+        <div className="modal-status-text">
           {versionDetectProgress.status}
         </div>
       </div>
@@ -686,7 +676,7 @@ export function VersionDetectResultModal({ versionDetectResultModal, setVersionD
       ]}
       width={800}
     >
-      <div style={{ padding: '10px 0' }}>
+      <div className="modal-content-padding">
         {versionDetectResultModal.results.length === 0 ? (
           <Alert message="无检测结果" type="info" showIcon />
         ) : (
@@ -697,6 +687,7 @@ export function VersionDetectResultModal({ versionDetectResultModal, setVersionD
               <Card
                 key={index}
                 size="small"
+                className="version-card"
                 title={<span><BranchesOutlined style={{ marginRight: 8 }} />{branchResult.targetBranch}</span>}
                 style={{ marginBottom: 12 }}
               >
@@ -716,7 +707,7 @@ export function VersionDetectResultModal({ versionDetectResultModal, setVersionD
                         title: '匹配Tag',
                         dataIndex: 'matchedTag',
                         key: 'matchedTag',
-                        render: (text) => text !== '-' ? <Tag color="blue">{text}</Tag> : <span style={{ color: '#999' }}>-</span>
+                        render: (text) => text !== '-' ? <Tag color="blue">{text}</Tag> : <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
                       },
                       {
                         title: '匹配时间',
@@ -729,7 +720,7 @@ export function VersionDetectResultModal({ versionDetectResultModal, setVersionD
                         title: '最新Tag',
                         dataIndex: 'latestTag',
                         key: 'latestTag',
-                        render: (text) => text !== '-' ? <Tag color="green">{text}</Tag> : <span style={{ color: '#999' }}>-</span>
+                        render: (text) => text !== '-' ? <Tag color="green">{text}</Tag> : <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
                       },
                       {
                         title: '最新时间',
@@ -766,7 +757,12 @@ export function BranchSwitcherModal({
     <Modal
       title="切换分支 (仅切换视图，不切换当前分支)"
       open={branchSwitcherVisible}
-      onOk={() => {
+      onOk={async () => {
+        try {
+          await window.electronAPI.git.fetch();
+        } catch (e) {
+          console.warn('[BranchSwitcher] fetch 失败:', e.message);
+        }
         setViewBranch(selectedViewBranch);
         setSelectedCommits([]);
         setSearchText('');
@@ -782,16 +778,23 @@ export function BranchSwitcherModal({
       cancelText="取消"
       width={500}
     >
-      <Search
-        placeholder="搜索分支..."
-        value={branchSearchText}
-        onChange={(e) => {
-          setBranchSearchText(e.target.value);
-          // 如果当前选中的分支被搜索过滤掉了，清除选中状态
-        }}
-        style={{ marginBottom: 12 }}
-        prefix={<SearchOutlined />}
-      />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+        <Input
+          placeholder="搜索分支..."
+          value={branchSearchText}
+          onChange={(e) => {
+            setBranchSearchText(e.target.value);
+          }}
+          style={{ flex: 1 }}
+          prefix={<SearchOutlined />}
+          allowClear
+        />
+        <Button
+          type="primary"
+          icon={<SearchOutlined />}
+          onClick={() => {}}
+        />
+      </div>
       {(() => {
         const filteredBranches = branchSearchText
           ? branches.filter(b => b.toLowerCase().includes(branchSearchText.toLowerCase()))
@@ -799,42 +802,22 @@ export function BranchSwitcherModal({
 
         if (filteredBranches.length === 0) {
           return (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+            <div className="branch-switcher-empty">
               {branchSearchText ? '未找到匹配的分支' : '暂无可用分支'}
             </div>
           );
         }
 
         return (
-          <div style={{ maxHeight: 360, overflow: 'auto' }}>
+          <div className="branch-switcher-list">
             {filteredBranches.map(branch => (
               <div
                 key={branch}
+                className={`branch-switcher-item ${selectedViewBranch === branch ? 'selected' : ''}`}
                 onClick={() => setSelectedViewBranch(branch)}
-                style={{
-                  padding: '8px 12px',
-                  cursor: 'pointer',
-                  background: selectedViewBranch === branch ? '#e6f7ff' : 'transparent',
-                  border: selectedViewBranch === branch ? '1px solid #1890ff' : '1px solid transparent',
-                  borderRadius: 4,
-                  marginBottom: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-                onMouseEnter={(e) => {
-                  if (selectedViewBranch !== branch) {
-                    e.currentTarget.style.background = '#f5f5f5';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (selectedViewBranch !== branch) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <BranchesOutlined style={{ marginRight: 8 }} />
+                <span className="branch-switcher-item-name">
+                  <BranchesOutlined />
                   {branch}
                 </span>
                 <Space size="small" style={{ flexShrink: 0 }}>

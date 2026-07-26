@@ -1,27 +1,31 @@
 .custom-titlebar {
   height: 40px;
-  background: #ffffff;
+  background: var(--color-bg-surface);
   display: flex;
   align-items: center;
   padding: 0 0 0 16px;
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .titlebar-title {
-  color: #30415c;
+  color: var(--color-text-primary);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
   white-space: nowrap;
 }
 
+.titlebar-title .anticon {
+  color: var(--color-primary);
+}
+
 .titlebar-project {
-  color: rgba(64, 82, 108, 0.85);
+  color: var(--color-text-secondary);
   font-size: 13px;
   margin-left: 16px;
   white-space: nowrap;
@@ -49,7 +53,7 @@
   justify-content: center;
   border: none;
   background: transparent;
-  color: #30415c;
+  color: var(--color-text-secondary);
   cursor: pointer;
   outline: none;
   padding: 0;
@@ -57,20 +61,20 @@
 }
 
 .titlebar-btn:hover {
-  background-color: #e8e8e8;
+  background-color: var(--color-bg-hover);
 }
 
 .titlebar-btn:active {
-  background-color: #d0d0d0;
+  background-color: var(--color-border);
 }
 
 /* 关闭按钮 hover 为红色 */
 .titlebar-btn-close:hover {
-  background-color: #e81123;
+  background-color: var(--color-error);
   color: #ffffff;
 }
 
 .titlebar-btn-close:active {
-  background-color: #bf0f1d;
+  background-color: #D63029;
   color: #ffffff;
 }

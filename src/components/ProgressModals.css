@@ -1,0 +1,129 @@
+/* ===== Modal 通用 ===== */
+.modal-content-padding {
+  padding: 10px 0;
+}
+
+.modal-status-text {
+  margin-top: 16px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+/* ===== 冲突解决 ===== */
+.conflict-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  transition: background-color 0.15s ease;
+}
+
+.conflict-file-item.resolved {
+  background: #F6FFED;
+  border-color: #B7EB8F;
+}
+
+.conflict-file-path {
+  flex: 1;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+.conflict-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--color-text-primary);
+}
+
+/* ===== 变更检测 - 缺失项 ===== */
+.missing-commit-item {
+  margin-bottom: 6px;
+  padding: 8px 12px;
+  background: #FFF2F0;
+  border-radius: var(--radius-sm);
+  border: 1px solid #FFCCC7;
+}
+
+.missing-commit-subject {
+  color: #CF1322;
+  font-weight: 500;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.missing-commit-branches {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ===== 分支切换 ===== */
+.branch-switcher-list {
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.branch-switcher-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.15s ease;
+}
+
+.branch-switcher-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.branch-switcher-item.selected {
+  background: var(--color-bg-selected);
+  border-color: var(--color-primary);
+}
+
+.branch-switcher-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.branch-switcher-item-name .anticon {
+  margin-right: 8px;
+  color: var(--color-primary);
+}
+
+.branch-switcher-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* ===== 版本检测表格 ===== */
+.version-card .ant-card-head {
+  border-bottom: 1px solid var(--color-border-light) !important;
+}
+
+.version-card .ant-card-head-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.version-card .ant-card-head-title .anticon {
+  color: var(--color-primary);
+}

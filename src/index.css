@@ -1,3 +1,45 @@
+:root {
+  /* 主色 - 靛蓝 */
+  --color-primary: #4F6EF7;
+  --color-primary-hover: #3B5DE7;
+  --color-primary-light: #EEF1FE;
+  --color-primary-bg: #F0F2FF;
+
+  /* 成功/警告/错误 */
+  --color-success: #34C759;
+  --color-warning: #FF9F0A;
+  --color-error: #FF3B30;
+
+  /* 中性色 */
+  --color-text-primary: #1A1D23;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
+  --color-text-placeholder: #C4C9D4;
+
+  /* 背景色 */
+  --color-bg-app: #F4F5F7;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-hover: #F9FAFB;
+  --color-bg-selected: #EEF1FE;
+
+  /* 边框 */
+  --color-border: #E5E7EB;
+  --color-border-light: #F0F1F3;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* 字体 */
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,10 +47,13 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f0f2f5;
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 #root {
@@ -17,19 +62,61 @@ body {
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
+  background: #D1D5DB;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: #9CA3AF;
+}
+
+/* Ant Design 全局覆盖 */
+.ant-btn-primary {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500;
+}
+
+.ant-btn-primary:hover {
+  background: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+.ant-btn-default {
+  border-radius: var(--radius-sm) !important;
+}
+
+.ant-radio-button-wrapper {
+  border-radius: var(--radius-sm) !important;
+}
+
+.ant-card {
+  border-radius: var(--radius-md) !important;
+}
+
+.ant-input,
+.ant-input-affix-wrapper {
+  border-radius: var(--radius-sm) !important;
+}
+
+.ant-tag {
+  border-radius: var(--radius-sm) !important;
+}
+
+.ant-modal-content {
+  border-radius: var(--radius-lg) !important;
+}
+
+.ant-drawer-content {
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg) !important;
 }

@@ -17,8 +17,6 @@ import {
 } from '@ant-design/icons';
 import { CommitItem } from './CommitList';
 
-const { Search } = Input;
-
 const CommitListPanel = ({
   searchText,
   setSearchText,
@@ -37,18 +35,27 @@ const CommitListPanel = ({
   return (
     <div className="commits-section">
       <div className="commits-toolbar">
-        <Search
-          placeholder="搜索提交..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{ width: 300 }}
-          prefix={<SearchOutlined />}
-        />
-        <Space>
-          <Button 
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Input
+            placeholder="搜索提交 hash、作者或消息..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={{ width: 320 }}
+            prefix={<SearchOutlined />}
+            allowClear
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={() => {}}
+          />
+        </div>
+        <Space size={8}>
+          <Button
             icon={<UserOutlined />}
             type={showMyCommits ? 'primary' : 'default'}
             onClick={() => setShowMyCommits(!showMyCommits)}
+            size="small"
           >
             我的提交
           </Button>
@@ -58,29 +65,31 @@ const CommitListPanel = ({
               setSearchText('');
               setShowMyCommits(false);
             }}
+            size="small"
           >
             清空
           </Button>
           <Button
             icon={<ReloadOutlined />}
             onClick={handleRefresh}
+            size="small"
           >
             刷新
           </Button>
         </Space>
       </div>
 
-      <div 
+      <div
         ref={commitsListRef}
         className="commits-list"
-        style={{ 
-          height: 'calc(100vh - 320px)', 
+        style={{
+          height: 'calc(100vh - 310px)',
           overflowY: 'auto',
           overflowX: 'hidden'
         }}
         onScroll={(e) => {
           const { scrollTop, scrollHeight, clientHeight } = e.target;
-          
+
           // 优化：滚动到距离底部200px时加载更多
           if (scrollTop + clientHeight >= scrollHeight - 200 && !loadingMore && hasMoreCommits) {
             loadMoreCommits();
@@ -92,13 +101,13 @@ const CommitListPanel = ({
             <Spin tip="正在加载提交记录..." />
           </div>
         )}
-        
+
         {filteredCommits.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-tertiary)' }}>
             暂无提交记录
           </div>
         )}
-        
+
         {filteredCommits.length > 0 && (
           filteredCommits.map((commit) => (
             <CommitItem
@@ -109,15 +118,15 @@ const CommitListPanel = ({
             />
           ))
         )}
-        
+
         {loadingMore && (
           <div style={{ textAlign: 'center', padding: '20px' }}>
             <Spin size="small" tip="加载更多..." />
           </div>
         )}
-        
+
         {!hasMoreCommits && filteredCommits.length > 0 && (
-          <div style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: '12px' }}>
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--color-text-tertiary)', fontSize: '12px' }}>
             已加载全部提交记录
           </div>
         )}
