@@ -1,6 +1,6 @@
 .main-workspace {
   height: 100%;
-  background: #f0f2f5;
+  background: #f8f9fc;
 }
 
 .loading-container {
@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2f5;
+  background: #f8f9fc;
 }
 
 .workspace-header {
@@ -17,7 +17,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   z-index: 10;
   height: 64px;
   line-height: 64px;
@@ -40,8 +40,8 @@
 .commits-section {
   flex: 1;
   background: #fff;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -75,12 +75,13 @@
 }
 
 .commit-item:hover:not(.selected) {
-  background-color: #fafafa;
+  background-color: #f5f3ff;
+  transition: background-color 0.2s ease;
 }
 
 .commit-item.selected {
-  background-color: #e6f7ff !important;
-  border-left: 3px solid #1890ff;
+  background-color: #eef2ff !important;
+  border-left: 3px solid #4F46E5;
 }
 
 .commit-item .ant-checkbox {
@@ -109,6 +110,33 @@
 
 .merge-progress-modal .ant-modal-body {
   padding: 24px;
+}
+
+/* 进度条百分比文字覆盖层 */
+.progress-percent-overlay {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 隐藏进度条默认的右侧百分比文字 */
+.merge-progress-modal .ant-progress-text {
+  display: none;
+}
+
+/* 进度条条体占满宽度 */
+.merge-progress-modal .ant-progress-inner {
+  border-radius: 6px;
 }
 
 .merge-result-modal .ant-modal-body {
@@ -142,7 +170,7 @@
 
 .merge-result-link {
   word-break: break-all;
-  color: #1890ff;
+  color: #4F46E5;
   text-decoration: none;
 }
 
@@ -155,6 +183,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
   min-height: auto;
 }
 
@@ -166,8 +196,8 @@
 .section-label {
   display: block;
   margin-bottom: 8px;
-  font-weight: 500;
-  color: #262626;
+  font-weight: 600;
+  color: #374151;
 }
 
 /* 横排布局的合并类型 */
@@ -204,7 +234,7 @@
 }
 
 .branches-checkbox-group .ant-checkbox-wrapper:hover {
-  border-color: #1890ff;
+  border-color: #4F46E5;
 }
 
 /* 操作按钮 */
@@ -221,7 +251,7 @@
 }
 
 .commits-table .ant-table-tbody > tr:hover > td {
-  background: #e6f7ff;
+  background: #eef2ff;
 }
 
 /* 滚动条样式 */

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Modal, Progress, Alert, Card, Tag, Button, Space, Table, message, Input
+  Modal, Progress, Alert, Card, Tag, Button, Space, Table, Tabs, message, Input
 } from 'antd';
 import {
   BranchesOutlined, CopyOutlined, SearchOutlined
@@ -23,12 +23,16 @@ export function MergeProgressModal({ mergeProgress }) {
       zIndex={1000}
       className="merge-progress-modal"
     >
-      <div style={{ padding: '20px 0' }}>
+      <div style={{ padding: '20px 0', position: 'relative' }}>
         <Progress
-          percent={Math.round((mergeProgress.current / mergeProgress.total) * 100)}
+          percent={mergeProgress.total > 0 ? Math.round((mergeProgress.current / mergeProgress.total) * 100) : 0}
           status="active"
-          format={(percent) => `${percent}%`}
+          strokeWidth={22}
+          format={() => ''}
         />
+        <span className="progress-percent-overlay">
+          {mergeProgress.total > 0 ? Math.round((mergeProgress.current / mergeProgress.total) * 100) : 0}%
+        </span>
         <div style={{ marginTop: 16, textAlign: 'center', color: '#666' }}>
           {mergeProgress.status}
         </div>
@@ -71,6 +75,18 @@ export function MergeProgressModal({ mergeProgress }) {
  * 合并分支结果 Modal
  */
 export function MergeResultModal({ mergeResultModal, setMergeResultModal, selectedCommits, findCommitByHash }) {
+  const [activeTab, setActiveTab] = React.useState('success');
+
+  React.useEffect(() => {
+    if (mergeResultModal.visible) {
+      const hasSuccess = mergeResultModal.results.some(r => r.success);
+      setActiveTab(hasSuccess ? 'success' : 'all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergeResultModal.visible]);
+
+  const successResults = mergeResultModal.results.filter(r => r.success);
+
   return (
     <Modal
       title="合并请求创建结果"
@@ -81,8 +97,7 @@ export function MergeResultModal({ mergeResultModal, setMergeResultModal, select
           key="copy"
           icon={<CopyOutlined />}
           onClick={() => {
-            const formatResults = () => {
-              const successResults = mergeResultModal.results.filter(r => r.success);
+              const formatResults = () => {
               if (successResults.length === 0) {
                 return '无成功的合并请求';
               }
@@ -126,62 +141,116 @@ export function MergeResultModal({ mergeResultModal, setMergeResultModal, select
       ]}
       width={700}
       className="merge-result-modal"
+      centered
+      styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
     >
       <div style={{ padding: '10px 0' }}>
-        <Alert
-          message={mergeResultModal.success ? '全部创建成功' : '部分创建失败'}
-          description={
-            <div>
-              <p style={{ marginBottom: '12px' }}>
-                共处理 {mergeResultModal.results.length} 个目标分支
-              </p>
-              {mergeResultModal.results.map((result, index) => (
-                <Card
-                  key={index}
-                  size="small"
-                  className={`merge-result-card ${result.success ? 'success' : 'error'}`}
-                  style={{ marginBottom: '12px' }}
-                >
-                  <div style={{ marginBottom: '8px' }}>
-                    <strong>目标分支:</strong> {result.targetBranch}
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <strong>源分支:</strong> {result.sourceBranch}
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <strong>创建分支:</strong> {result.mergeBranch}
-                  </div>
-                  {result.success && result.mrUrl && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <strong>合并请求:</strong>{' '}
-                      <a
-                        href="#!"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          window.electronAPI.system.openExternal(result.mrUrl);
-                        }}
-                        className="merge-result-link"
-                      >
-                        {result.mrUrl}
-                      </a>
-                    </div>
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'success',
+              label: `结果摘要 (${successResults.length})`,
+              children: (
+                <div>
+                  {successResults.length === 0 ? (
+                    <Alert
+                      message="没有创建成功的分支"
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: '12px' }}
+                    />
+                  ) : (
+                    <Alert
+                      message={`成功创建 ${successResults.length} 个分支`}
+                      type="success"
+                      showIcon
+                      style={{ marginBottom: '12px' }}
+                    />
                   )}
-                  {result.error && (
-                    <div style={{ color: '#ff4d4f' }}>
-                      <strong>错误:</strong> {result.error}
-                    </div>
-                  )}
-                  <div style={{ marginTop: '8px' }}>
-                    <Tag color={result.success ? 'green' : 'red'}>
-                      {result.success ? '成功' : '失败'}
-                    </Tag>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          }
-          type={mergeResultModal.success ? 'success' : 'warning'}
-          showIcon
+                  {successResults.map((result, index) => (
+                    <Card
+                      key={index}
+                      size="small"
+                      className="merge-result-card success"
+                      style={{ marginBottom: '12px' }}
+                    >
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong>创建分支:</strong> {result.mergeBranch}
+                      </div>
+                      <div style={{ marginTop: '8px' }}>
+                        <Tag color="green">成功</Tag>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ),
+            },
+            {
+              key: 'all',
+              label: `详细结果 (${mergeResultModal.results.length})`,
+              children: (
+                <div>
+                  <Alert
+                    message={mergeResultModal.success ? '全部创建成功' : '部分创建失败'}
+                    description={
+                      <div>
+                        <p style={{ marginBottom: '12px' }}>
+                          共处理 {mergeResultModal.results.length} 个目标分支
+                        </p>
+                        {mergeResultModal.results.map((result, index) => (
+                          <Card
+                            key={index}
+                            size="small"
+                            className={`merge-result-card ${result.success ? 'success' : 'error'}`}
+                            style={{ marginBottom: '12px' }}
+                          >
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong>目标分支:</strong> {result.targetBranch}
+                            </div>
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong>源分支:</strong> {result.sourceBranch}
+                            </div>
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong>创建分支:</strong> {result.mergeBranch}
+                            </div>
+                            {result.success && result.mrUrl && (
+                              <div style={{ marginBottom: '8px' }}>
+                                <strong>合并请求:</strong>{' '}
+                                <a
+                                  href="#!"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    window.electronAPI.system.openExternal(result.mrUrl);
+                                  }}
+                                  className="merge-result-link"
+                                >
+                                  {result.mrUrl}
+                                </a>
+                              </div>
+                            )}
+                            {result.error && (
+                              <div style={{ color: '#ff4d4f' }}>
+                                <strong>错误:</strong> {result.error}
+                              </div>
+                            )}
+                            <div style={{ marginTop: '8px' }}>
+                              <Tag color={result.success ? 'green' : 'red'}>
+                                {result.success ? '成功' : '失败'}
+                              </Tag>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    }
+                    type={mergeResultModal.success ? 'success' : 'warning'}
+                    showIcon
+                  />
+                </div>
+              ),
+            },
+          ]}
         />
       </div>
     </Modal>
@@ -211,7 +280,7 @@ export function ConflictResolveModal({ conflictModal, allFilesResolved, handleCo
     >
       <div style={{ padding: '10px 0' }}>
         <Alert
-          message={`Cherry-pick 到 ${conflictModal.branch} 时发生冲突`}
+          message={conflictModal.source === 'merge' ? `合并 origin/${conflictModal.branch} 时发生冲突` : `Cherry-pick 到 ${conflictModal.branch} 时发生冲突`}
           description={'请在外部编辑器中手动解决冲突，解决后点击\u201C已处理\u201D标记该文件。所有文件标记为已处理后，点击\u201C确认\u201D继续。'}
           type="error"
           showIcon
@@ -272,12 +341,16 @@ export function CherryPickProgressModal({ cherryPickProgress }) {
       zIndex={1000}
       className="merge-progress-modal"
     >
-      <div style={{ padding: '20px 0' }}>
+      <div style={{ padding: '20px 0', position: 'relative' }}>
         <Progress
-          percent={Math.round((cherryPickProgress.current / cherryPickProgress.total) * 100)}
+          percent={cherryPickProgress.total > 0 ? Math.round((cherryPickProgress.current / cherryPickProgress.total) * 100) : 0}
           status="active"
-          format={(percent) => `${percent}%`}
+          strokeWidth={22}
+          format={() => ''}
         />
+        <span className="progress-percent-overlay">
+          {cherryPickProgress.total > 0 ? Math.round((cherryPickProgress.current / cherryPickProgress.total) * 100) : 0}%
+        </span>
         <div style={{ marginTop: 16, textAlign: 'center', color: '#666' }}>
           {cherryPickProgress.status}
         </div>
@@ -424,11 +497,16 @@ export function ConflictProgressModal({ conflictProgress }) {
       maskClosable={false}
       width={500}
     >
-      <div style={{ padding: '10px 0' }}>
+      <div style={{ padding: '20px 0', position: 'relative' }}>
         <Progress
           percent={conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}
           status="active"
+          strokeWidth={22}
+          format={() => ''}
         />
+        <span className="progress-percent-overlay">
+          {conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}%
+        </span>
         <div style={{ marginTop: 8, color: '#666' }}>
           {conflictProgress.status}
         </div>
@@ -506,11 +584,16 @@ export function ChangeDetectProgressModal({ changeDetectProgress }) {
       closable={false}
       width={500}
     >
-      <div style={{ padding: '20px 0' }}>
+      <div style={{ padding: '20px 0', position: 'relative' }}>
         <Progress
           percent={changeDetectProgress.total > 0 ? Math.round((changeDetectProgress.current / changeDetectProgress.total) * 100) : 0}
           status={changeDetectProgress.current < changeDetectProgress.total ? 'active' : 'success'}
+          strokeWidth={22}
+          format={() => ''}
         />
+        <span className="progress-percent-overlay">
+          {changeDetectProgress.total > 0 ? Math.round((changeDetectProgress.current / changeDetectProgress.total) * 100) : 0}%
+        </span>
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           {changeDetectProgress.status}
         </div>
@@ -639,11 +722,16 @@ export function VersionDetectProgressModal({ versionDetectProgress }) {
       maskClosable={false}
       width={500}
     >
-      <div style={{ padding: '20px 0' }}>
+      <div style={{ padding: '20px 0', position: 'relative' }}>
         <Progress
           percent={versionDetectProgress.total > 0 ? Math.round((versionDetectProgress.current / versionDetectProgress.total) * 100) : 0}
           status={versionDetectProgress.current < versionDetectProgress.total ? 'active' : 'success'}
+          strokeWidth={22}
+          format={() => ''}
         />
+        <span className="progress-percent-overlay">
+          {versionDetectProgress.total > 0 ? Math.round((versionDetectProgress.current / versionDetectProgress.total) * 100) : 0}%
+        </span>
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           {versionDetectProgress.status}
         </div>
@@ -814,8 +902,8 @@ export function BranchSwitcherModal({
                 style={{
                   padding: '8px 12px',
                   cursor: 'pointer',
-                  background: selectedViewBranch === branch ? '#e6f7ff' : 'transparent',
-                  border: selectedViewBranch === branch ? '1px solid #1890ff' : '1px solid transparent',
+                  background: selectedViewBranch === branch ? '#eef2ff' : 'transparent',
+                  border: selectedViewBranch === branch ? '1px solid #4F46E5' : '1px solid transparent',
                   borderRadius: 4,
                   marginBottom: 4,
                   display: 'flex',

@@ -147,7 +147,8 @@ export async function runCherryPickLoop(params) {
           visible: true,
           files: conflictedFiles.map(p => ({ path: p, resolved: false })),
           branch: targetBranch,
-          sha: sha
+          sha: sha,
+          source: 'cherry-pick'
         });
       });
 

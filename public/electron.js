@@ -31,7 +31,8 @@ const store = new Store({
       businessLine: 'MK',
       defaultPushSourceEnabled: true,
       defaultDeleteSourceEnabled: true,
-      authorReplaceEmail: ''         // author 邮箱不合规时的默认替换邮箱
+      authorReplaceEmail: '',        // author 邮箱不合规时的默认替换邮箱
+      themeColor: '#4F46E5',
     }
   }
 });

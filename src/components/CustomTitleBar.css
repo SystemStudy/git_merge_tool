@@ -7,7 +7,7 @@
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .titlebar-title {
@@ -53,7 +53,7 @@
   cursor: pointer;
   outline: none;
   padding: 0;
-  transition: background-color 0.15s;
+  transition: background-color 0.15s ease;
 }
 
 .titlebar-btn:hover {

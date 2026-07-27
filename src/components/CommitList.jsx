@@ -23,7 +23,7 @@ export const CommitItem = memo(({ commit, isSelected, onToggle }) => {
     }
   }, [commit.hash, onToggle]);
 
-  const backgroundColor = isSelected ? '#e6f7ff' : 'transparent';
+  const backgroundColor = isSelected ? '#eef2ff' : 'transparent';
 
   return (
     <div 
@@ -54,7 +54,7 @@ export const CommitItem = memo(({ commit, isSelected, onToggle }) => {
           backgroundColor: '#f5f5f5',
           padding: '2px 6px',
           borderRadius: '4px',
-          color: isSelected ? '#1890ff' : '#666'
+          color: isSelected ? '#4F46E5' : '#666'
         }}>
           {commit.hash?.substring(0, 8)}
         </code>
@@ -119,7 +119,7 @@ export const CommitRow = ({ index, style, data }) => {
         borderBottom: '1px solid #f0f0f0',
         cursor: 'pointer',
         userSelect: 'none',
-        backgroundColor: isSelected ? '#e6f7ff' : 'transparent'
+        backgroundColor: isSelected ? '#eef2ff' : 'transparent'
       }}
       onClick={handleClick}
       onMouseEnter={(e) => {
@@ -128,7 +128,7 @@ export const CommitRow = ({ index, style, data }) => {
         }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = isSelected ? '#e6f7ff' : 'transparent';
+        e.currentTarget.style.backgroundColor = isSelected ? '#eef2ff' : 'transparent';
       }}
     >
       <Checkbox

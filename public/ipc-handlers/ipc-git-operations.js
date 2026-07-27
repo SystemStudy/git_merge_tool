@@ -292,8 +292,26 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       throw new Error(`远程分支不存在: origin/${branch}，请先推送该分支或确认分支名`);
     }
 
-    await getGit().pull('origin', branch);
-    return { success: true };
+    const git = getGit();
+    try {
+      await git.pull('origin', branch);
+      return { status: 'success' };
+    } catch (error) {
+      const msg = error.message || '';
+      // 检测合并冲突：以工作区是否存在未解决冲突文件为准（与错误信息字符串解耦）
+      try {
+        const diffOutput = await git.raw(['diff', '--name-only', '--diff-filter=U']);
+        const conflictedFiles = diffOutput.trim().split('\n').filter(Boolean);
+        if (conflictedFiles.length > 0) {
+          console.log(`[git-pull] 检测到合并冲突，冲突文件:`, conflictedFiles);
+          return { status: 'conflict', conflictedFiles };
+        }
+      } catch (e) {
+        console.error(`[git-pull] 获取冲突文件列表失败:`, e.message);
+      }
+      console.error(`[git-pull] 拉取失败: ${msg}`);
+      return { status: 'error', error: msg };
+    }
   });
 
   // 强制使用远程分支覆盖本地分支：fetch origin <branch> + reset --hard origin/<branch>
@@ -624,6 +642,25 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     }
   });
 
+  // 检查远程分支领先本地多少提交（本地落后远程的提交数）
+  ipcMain.handle('git-check-behind', async (event, targetBranch) => {
+    const timestamp = formatTimestamp();
+    console.log(`[${timestamp}] [git-check-behind] 检查远程领先提交数: ${targetBranch}`);
+
+    if (!getGit()) throw new Error('未打开项目');
+
+    try {
+      const result = await getGit().raw(['rev-list', '--count', `HEAD..origin/${targetBranch}`]);
+      const count = parseInt(result.trim(), 10) || 0;
+      console.log(`[${timestamp}] [git-check-behind] 远程领先提交数: ${count}`);
+      return { behind: count > 0, count };
+    } catch (error) {
+      // origin/xxx 不存在或引用未更新，认为无远程新提交
+      console.log(`[${timestamp}] [git-check-behind] 检查失败(可能是远程引用不存在), 认为无新提交: ${error.message}`);
+      return { behind: false, count: 0 };
+    }
+  });
+
   ipcMain.handle('git-stash-create', async (event, message) => {
     if (!getGit()) throw new Error('未打开项目');
     await getGit().stash(['save', message]);
@@ -765,6 +802,46 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       return { success: true };
     } catch (error) {
       console.error(`[${timestamp}] [git-cherry-pick-abort] 失败: ${error.message}`);
+      return { success: true };
+    }
+  });
+
+  // 解决 merge 冲突后继续合并（用于 pull 产生的 merge 冲突）
+  ipcMain.handle('git-merge-continue', async () => {
+    const timestamp = formatTimestamp();
+    console.log(`[${timestamp}] [git-merge-continue] 继续 merge`);
+
+    const { exec } = require('child_process');
+
+    if (!getGit() || !getProjectPath()) throw new Error('未打开项目');
+
+    try {
+      await getGit().raw(['add', '-A']);
+      await new Promise((resolve, reject) => {
+        exec('git -c core.editor=true merge --continue', { cwd: getProjectPath() }, (err) => {
+          if (err) reject(err); else resolve();
+        });
+      });
+      console.log(`[${timestamp}] [git-merge-continue] 成功`);
+      return { success: true };
+    } catch (error) {
+      console.error(`[${timestamp}] [git-merge-continue] 失败: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 放弃 merge（用于 pull 产生的 merge 冲突）
+  ipcMain.handle('git-merge-abort', async () => {
+    const timestamp = formatTimestamp();
+    console.log(`[${timestamp}] [git-merge-abort] 中止 merge`);
+
+    if (!getGit()) throw new Error('未打开项目');
+
+    try {
+      await getGit().raw(['merge', '--abort']);
+      return { success: true };
+    } catch (error) {
+      console.error(`[${timestamp}] [git-merge-abort] 失败: ${error.message}`);
       return { success: true };
     }
   });

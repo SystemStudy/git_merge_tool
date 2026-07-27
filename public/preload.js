@@ -59,7 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readPomParentVersion: () => ipcRenderer.invoke('git-read-pom-parent-version'),
     listChangedJavaFiles: (beforePickSha) => ipcRenderer.invoke('git-list-changed-java-files', beforePickSha),
     applyVersionReplacement: (params) => ipcRenderer.invoke('git-apply-version-replacement', params),
-    squashIntoParent: (params) => ipcRenderer.invoke('git-squash-into-parent', params)
+    squashIntoParent: (params) => ipcRenderer.invoke('git-squash-into-parent', params),
+    checkBehind: (branch) => ipcRenderer.invoke('git-check-behind', branch),
+    mergeContinue: () => ipcRenderer.invoke('git-merge-continue'),
+    mergeAbort: () => ipcRenderer.invoke('git-merge-abort')
   },
 
   // GitLab操作

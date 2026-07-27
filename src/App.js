@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, message } from 'antd';
+import { Layout, message, ConfigProvider } from 'antd';
 import WelcomePage from './components/WelcomePage';
 import MainWorkspace from './components/MainWorkspace';
 import CustomTitleBar from './components/CustomTitleBar';
@@ -10,6 +10,7 @@ const { Content } = Layout;
 function App() {
   const [currentProject, setCurrentProject] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [themeColor, setThemeColor] = useState('#4F46E5');
 
   useEffect(() => {
     // 监听主进程的项目打开事件
@@ -38,6 +39,19 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const settings = await window.electronAPI.settings.get();
+        if (settings && settings.themeColor) {
+          setThemeColor(settings.themeColor);
+        }
+      } catch (e) {
+        // 忽略：使用默认色
+      }
+    })();
+  }, []);
+
   const handleProjectSelect = async (projectPath) => {
     setLoading(true);
     try {
@@ -57,22 +71,26 @@ function App() {
   };
 
   return (
-    <Layout className="app-layout">
-      <CustomTitleBar projectName={currentProject?.info?.name} />
-      <Content className="app-content">
-        {currentProject ? (
-          <MainWorkspace 
-            project={currentProject} 
-            onClose={handleCloseProject}
-          />
-        ) : (
-          <WelcomePage 
-            onProjectSelect={handleProjectSelect}
-            loading={loading}
-          />
-        )}
-      </Content>
-    </Layout>
+    <ConfigProvider theme={{ token: { colorPrimary: themeColor, colorInfo: themeColor } }}>
+      <Layout className="app-layout">
+        <CustomTitleBar projectName={currentProject?.info?.name} />
+        <Content className="app-content">
+          {currentProject ? (
+            <MainWorkspace 
+              project={currentProject} 
+              onClose={handleCloseProject}
+              onThemeColorChange={setThemeColor}
+            />
+          ) : (
+            <WelcomePage 
+              onProjectSelect={handleProjectSelect}
+              loading={loading}
+              onThemeColorChange={setThemeColor}
+            />
+          )}
+        </Content>
+      </Layout>
+    </ConfigProvider>
   );
 }
 

@@ -48,7 +48,7 @@ const CommitListPanel = ({
             prefix={<SearchOutlined />}
           />
           {selectedCommitsSet.size > 0 && (
-            <span style={{ fontSize: '13px', color: '#1890ff', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '13px', color: '#4F46E5', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               已选中 {selectedCommitsSet.size} 条记录
               <CloseCircleOutlined
                 style={{ cursor: 'pointer', fontSize: '14px', color: '#999' }}

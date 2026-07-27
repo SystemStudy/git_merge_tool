@@ -12,12 +12,12 @@ import {
 import {
   ArrowLeftOutlined,
   ReloadOutlined,
-  DownloadOutlined,
   BranchesOutlined,
   GlobalOutlined,
 } from '@ant-design/icons';
 import './MainWorkspace.css';
-import { mergeMultiLanguageContent } from '../utils/mergeUtils';
+import { mergeMultiLanguageContent, isMultiLanguageConflict } from '../utils/mergeUtils';
+import { showPullChoiceDialog } from '../utils/workspaceHelpers';
 import { performanceMonitor } from '../utils/performanceUtils';
 import SettingsForm from './SettingsForm';
 import OperationPanel from './OperationPanel';
@@ -42,7 +42,7 @@ import { useCreateMergeBranch } from '../hooks/useCreateMergeBranch';
 
 const { Header, Content } = Layout;
 
-const MainWorkspace = ({ project, onClose }) => {
+const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [branches, setBranches] = useState([]);
   const [currentBranch, setCurrentBranch] = useState('');
   const [commits, setCommits] = useState([]);
@@ -435,15 +435,141 @@ const MainWorkspace = ({ project, onClose }) => {
     return () => clearTimeout(searchDebouncerRef.current);
   }, [searchText, viewBranch]);
 
+  const handlePullConflict = async (conflictedFiles, branch) => {
+    // 多语言文件自动合并检测（复用遴选的自动合并逻辑）
+    if (isMultiLanguageConflict(conflictedFiles)) {
+      message.info('检测到多语言文件冲突，正在尝试自动合并');
+      const autoResult = await handleAutoMergeLanguageFiles(branch, null, conflictedFiles);
+      if (autoResult === 'auto-success') {
+        const continueResult = await window.electronAPI.git.mergeContinue();
+        if (continueResult.success) {
+          return;
+        }
+        message.warning('自动合并后继续失败，切换到手动处理');
+      } else {
+        message.warning('多语言自动合并失败，切换到手动处理');
+      }
+    }
+
+    // 显示冲突解决 modal，等待用户操作（复用遴选的冲突解决 UI）
+    const userAction = await new Promise((resolve) => {
+      conflictResolveRef.current = resolve;
+      setConflictModal({
+        visible: true,
+        files: conflictedFiles.map(p => ({ path: p, resolved: false })),
+        branch: branch,
+        sha: '',
+        source: 'merge'
+      });
+    });
+
+    setConflictModal(prev => ({ ...prev, visible: false }));
+
+    if (userAction === 'confirm') {
+      const continueResult = await window.electronAPI.git.mergeContinue();
+      if (!continueResult.success) {
+        message.error('解决冲突后继续合并失败: ' + continueResult.error);
+        await window.electronAPI.git.mergeAbort();
+      }
+    } else {
+      // 用户取消 → 放弃 merge
+      await window.electronAPI.git.mergeAbort();
+      message.info('已放弃合并，远程更新未应用');
+    }
+  };
+
   const handleRefresh = async () => {
     setSearchText('');
     setShowMyCommits(false);
     setAllCommits([]);
     allCommitsLoadedRef.current = false;
-    if (viewBranch) {
-      await loadCommits(viewBranch, true);
+
+    const branch = viewBranch;
+    if (!branch) {
+      message.warning('当前无分支，无法拉取远程更新');
+      return;
     }
-    message.success('刷新成功');
+
+    setLoading(true);
+    let stashed = false;
+
+    try {
+      // 工作区有未提交改动 → 先 stash
+      const hasChanges = await window.electronAPI.git.hasUncommittedChanges();
+      if (hasChanges) {
+        await window.electronAPI.git.stashCreate('refresh-pull');
+        stashed = true;
+      }
+
+      // 目标分支不是当前分支 → 切换过去
+      if (branch !== currentBranch) {
+        await window.electronAPI.git.checkout(branch);
+      }
+
+      // 步骤1：拉取远程分支引用并判断远程是否存在
+      const fetchResult = await window.electronAPI.git.fetchBranch(branch);
+      if (!fetchResult.remoteExists) {
+        message.info(`远程分支 origin/${branch} 不存在，仅刷新本地记录`);
+        return;
+      }
+
+      // 步骤2：检查远程是否有新提交未拉取（behind）
+      const behindResult = await window.electronAPI.git.checkBehind(branch);
+      if (!behindResult.behind) {
+        message.info('远程分支无新提交，已是最新');
+        return;
+      }
+
+      // 步骤3：检查本地是否有未推送提交（ahead）
+      const aheadResult = await window.electronAPI.git.checkHasNewCommits(branch);
+
+      let pullStatus;
+      if (!aheadResult.hasNewCommits) {
+        // 本地无未推送 → 直接 pull（fast-forward）
+        pullStatus = await window.electronAPI.git.pull(branch);
+      } else {
+        // 本地有未推送 + 远程有新提交 → 询问选择
+        const choice = await showPullChoiceDialog(branch, aheadResult.count, behindResult.count);
+        if (choice === 'cancel') {
+          message.info('已取消拉取');
+          return;
+        }
+        if (choice === 'reset') {
+          await window.electronAPI.git.forceSyncBranch(branch);
+          message.success(`已用远程分支 origin/${branch} 覆盖本地`);
+          return;
+        }
+        // choice === 'pull'
+        pullStatus = await window.electronAPI.git.pull(branch);
+      }
+
+      // 处理 pull 结果
+      if (pullStatus.status === 'conflict') {
+        await handlePullConflict(pullStatus.conflictedFiles || [], branch);
+      } else if (pullStatus.status === 'error') {
+        message.error('拉取失败: ' + pullStatus.error);
+      } else {
+        message.success('已拉取并合并远程最新提交');
+      }
+    } catch (error) {
+      message.error('拉取远程更新失败: ' + error.message);
+    } finally {
+      try {
+        await loadBranches();
+        await loadCurrentBranch();
+        if (viewBranch) await loadCommits(viewBranch, true);
+      } catch (e) {
+        console.error('刷新显示失败:', e);
+      }
+      if (stashed) {
+        try {
+          await window.electronAPI.git.stashPop();
+        } catch (e) {
+          message.warning('恢复暂存改动失败，请手动执行 git stash pop');
+        }
+      }
+      setLoading(false);
+    }
   };
 
   // 遴选推送操作（抽取到 hook）
@@ -654,28 +780,18 @@ const MainWorkspace = ({ project, onClose }) => {
         <SettingsForm
           settings={settings}
           onSave={async (newSettings) => {
-            await window.electronAPI.settings.save(newSettings);
-            setSettings(newSettings);
-            message.success('设置已保存');
-            setSettingsVisible(false);
+            try {
+              await window.electronAPI.settings.save(newSettings);
+              setSettings(newSettings);
+              message.success('设置已保存');
+              setSettingsVisible(false);
+            } catch (error) {
+              message.error('保存设置失败: ' + error.message);
+            }
           }}
+          onThemeColorChange={onThemeColorChange}
+          onSettingsChange={setSettings}
         />
-        <div style={{ marginTop: 16, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={async () => {
-              const result = await window.electronAPI.system.exportLogZip();
-              if (result.success) {
-                message.success('日志导出成功: ' + result.path);
-              } else if (!result.canceled) {
-                message.error('日志导出失败: ' + result.error);
-              }
-            }}
-            block
-          >
-            导出日志
-          </Button>
-        </div>
       </Drawer>
 
 

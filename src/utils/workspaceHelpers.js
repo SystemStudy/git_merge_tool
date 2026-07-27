@@ -22,8 +22,38 @@ export const showSkipAbortDialog = async (title, content) => {
       cancelText: '终止操作',
       onOk: () => resolve('skip'),
       onCancel: () => resolve('abort'),
-      okButtonProps: { style: { background: '#1890ff' } },
+      okButtonProps: { style: { background: '#4F46E5' } },
       cancelButtonProps: { style: { background: '#ff4d4f' } }
+    });
+  });
+};
+
+// pull/远程覆盖 三选一弹窗：返回 'pull' | 'reset' | 'cancel'
+export const showPullChoiceDialog = async (branch, aheadCount, behindCount) => {
+  return await new Promise((resolve) => {
+    let instance;
+    let resolved = false;
+    const finish = (val) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(val);
+      instance?.destroy();
+    };
+    instance = Modal.confirm({
+      title: `拉取远程更新：${branch}`,
+      content: (
+        <div>
+          <p>本地有 <strong>{aheadCount}</strong> 个未推送提交，远程有 <strong>{behindCount}</strong> 个新提交尚未拉取。</p>
+          <p>请选择拉取方式：</p>
+          <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
+            <Button onClick={() => finish('pull')}>合并拉取（保留本地提交）</Button>
+            <Button danger onClick={() => finish('reset')}>远程覆盖（丢弃本地提交）</Button>
+          </div>
+        </div>
+      ),
+      okButtonProps: { style: { display: 'none' } },
+      cancelText: '取消',
+      onCancel: () => finish('cancel'),
     });
   });
 };
@@ -34,10 +64,10 @@ export const showMergeBranchConflictDialog = async (branchName, conflictInfo) =>
   const isExactMatch = type === 'exact';
 
   const description = isExactMatch
-    ? (<p>远程仓库已存在分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong>，请选择处理方式：</p>)
+    ? (<p>远程仓库已存在分支 <strong style={{ color: '#4F46E5' }}>{conflictingBranch}</strong>，请选择处理方式：</p>)
     : (<div>
         <p>无法创建分支 <strong style={{ color: '#ff4d4f' }}>{branchName}</strong></p>
-        <p>因为已有分支 <strong style={{ color: '#1890ff' }}>{conflictingBranch}</strong> 存在（git 不允许分支路径互为前缀），请选择处理方式：</p>
+        <p>因为已有分支 <strong style={{ color: '#4F46E5' }}>{conflictingBranch}</strong> 存在（git 不允许分支路径互为前缀），请选择处理方式：</p>
       </div>);
 
   return await new Promise((resolve) => {

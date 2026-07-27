@@ -1,9 +1,20 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Alert, Tabs, message } from 'antd';
+import { Form, Input, Button, Alert, Tabs, message, Divider } from 'antd';
+import { ExportOutlined } from '@ant-design/icons';
 
-const SettingsForm = ({ settings, onSave }) => {
+const THEME_COLORS = [
+  { name: '靛蓝', value: '#4F46E5' },
+  { name: '蓝色', value: '#1677FF' },
+  { name: '青色', value: '#13C2C2' },
+  { name: '翠绿', value: '#10B981' },
+  { name: '橙色', value: '#F59E0B' },
+  { name: '玫红', value: '#EB2F96' },
+];
+
+const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }) => {
   const [form] = Form.useForm();
   const [testResult, setTestResult] = useState(null);
+  const [themeColor, setThemeColor] = useState(settings.themeColor || '#4F46E5');
 
   const handleTestToken = async () => {
     const values = form.getFieldsValue();
@@ -28,8 +39,35 @@ const SettingsForm = ({ settings, onSave }) => {
     }
   };
 
+  const handleThemeColorSelect = async (newColor) => {
+    setThemeColor(newColor);
+    const newSettings = { ...settings, themeColor: newColor };
+    // 同步父组件 settings state（避免 Drawer 重开时 UI 回退）
+    if (onSettingsChange) {
+      onSettingsChange(newSettings);
+    }
+    if (onThemeColorChange) {
+      onThemeColorChange(newColor);
+    }
+    // 即时持久化到 electron-store
+    try {
+      await window.electronAPI.settings.save(newSettings);
+    } catch (err) {
+      message.error('主题色保存失败: ' + err.message);
+    }
+  };
+
+  const handleExportLog = async () => {
+    try {
+      await window.electronAPI.system.exportLogZip();
+      message.success('日志导出完成');
+    } catch (error) {
+      message.error('导出失败: ' + error.message);
+    }
+  };
+
   const handleFinish = (values) => {
-    const newSettings = { ...settings, ...values };
+    const newSettings = { ...settings, ...values, themeColor };
     onSave(newSettings);
   };
 
@@ -37,10 +75,63 @@ const SettingsForm = ({ settings, onSave }) => {
     <Form
       form={form}
       layout="vertical"
-      initialValues={settings}
+      initialValues={{ ...settings, themeColor }}
       onFinish={handleFinish}
     >
-      <Tabs items={[
+      <Tabs defaultActiveKey="general" items={[
+        {
+          key: 'general',
+          label: '常规设置',
+          children: (
+            <>
+              <Form.Item label="主题颜色">
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  {THEME_COLORS.map((c) => {
+                    const selected = themeColor === c.value;
+                    return (
+                      <div
+                        key={c.value}
+                        onClick={() => handleThemeColorSelect(c.value)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          cursor: 'pointer',
+                          border: selected ? `2px solid ${c.value}` : '1px solid #d9d9d9',
+                          backgroundColor: selected ? `${c.value}14` : '#fff',
+                          transition: 'all 0.2s',
+                          userSelect: 'none',
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: c.value,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ lineHeight: '16px' }}>{c.name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Form.Item>
+
+              <Divider />
+
+              <Form.Item label="日志管理">
+                <Button icon={<ExportOutlined />} onClick={handleExportLog}>
+                  导出当前日志
+                </Button>
+              </Form.Item>
+            </>
+          ),
+        },
         {
           key: 'gitlab',
           label: 'GitLab设置',
@@ -69,7 +160,7 @@ const SettingsForm = ({ settings, onSave }) => {
                 />
               )}
             </>
-          )
+          ),
         },
         {
           key: 'branches',
@@ -95,8 +186,8 @@ const SettingsForm = ({ settings, onSave }) => {
                 <Input.TextArea rows={4} />
               </Form.Item>
             </>
-          )
-        }
+          ),
+        },
       ]} />
 
       <Form.Item>

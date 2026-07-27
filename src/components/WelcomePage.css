@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   padding: 40px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .welcome-content {
@@ -22,15 +22,17 @@
 
 .welcome-title {
   margin-bottom: 8px !important;
-  color: #1890ff !important;
+  color: #ffffff !important;
 }
 
 .welcome-title .anticon {
   margin-right: 12px;
+  color: #ffffff;
 }
 
 .welcome-subtitle {
   font-size: 15px;
+  color: rgba(255, 255, 255, 0.85) !important;
 }
 
 /* 最近项目区域 */
@@ -39,7 +41,7 @@
   background: #fff;
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   min-height: 200px;
 }
 
@@ -66,8 +68,8 @@
 }
 
 .project-card {
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 16px;
   cursor: pointer;
@@ -79,10 +81,10 @@
 }
 
 .project-card:hover {
-  background: #e6f7ff;
-  border-color: #91d5ff;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.12);
-  transform: translateY(-2px);
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.12);
+  transform: translateY(-4px);
 }
 
 .project-card-header {
@@ -130,7 +132,8 @@
   height: 48px;
   font-size: 16px;
   min-width: 180px;
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 @media (max-width: 640px) {
