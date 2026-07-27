@@ -9,6 +9,7 @@ import {
   Radio,
   Checkbox,
   AutoComplete,
+  Spin,
 } from 'antd';
 import {
   WarningOutlined,
@@ -43,6 +44,13 @@ const OperationPanel = ({
   versionDetecting,
   selectedCommitsCount,
   isDetectConflictDisabled,
+  remoteRepos = [],
+  selectedRemoteRepos = [],
+  setSelectedRemoteRepos,
+  remoteRepoBranches = {},
+  selectedRemoteBranches = {},
+  setSelectedRemoteBranches,
+  loadingRemoteRepos = false,
 }) => {
   return (
     <div className="operations-panel">
@@ -67,6 +75,59 @@ const OperationPanel = ({
             ))}
           </Radio.Group>
         </div>
+
+        {remoteRepos.length > 0 && (
+          <>
+            <div className="remote-repos-section">
+              <label className="section-label">外部仓库（可选）</label>
+              {loadingRemoteRepos ? (
+                <Spin size="small" />
+              ) : (
+                <Checkbox.Group
+                  options={remoteRepos.map(repo => ({
+                    label: repo.name,
+                    value: repo.id
+                  }))}
+                  value={selectedRemoteRepos}
+                  onChange={setSelectedRemoteRepos}
+                />
+              )}
+            </div>
+
+            {selectedRemoteRepos.length > 0 && (
+              <div className="remote-repos-branches-section">
+                {selectedRemoteRepos.map(repoId => {
+                  const repo = remoteRepos.find(r => r.id === repoId);
+                  const repoBranches = remoteRepoBranches[repoId] || [];
+                  const selectedBranches = selectedRemoteBranches[repoId] || [];
+
+                  return (
+                    <div key={repoId} className="remote-repo-branch-group">
+                      <label className="section-label">{repo ? repo.name : repoId} 目标分支</label>
+                      {repoBranches.length === 0 ? (
+                        <Spin size="small" />
+                      ) : (
+                        <Checkbox.Group
+                          options={repoBranches.map(branch => ({
+                            label: branch,
+                            value: branch
+                          }))}
+                          value={selectedBranches}
+                          onChange={(values) => {
+                            setSelectedRemoteBranches({
+                              ...selectedRemoteBranches,
+                              [repoId]: values
+                            });
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
 
         <div className="target-branches-section">
           <label className="section-label">目标分支:</label>

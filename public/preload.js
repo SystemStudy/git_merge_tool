@@ -73,6 +73,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('gitlab-create-merge-request', serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch)
   },
 
+  // 远程仓库操作
+  remoteRepos: {
+    list: () => ipcRenderer.invoke('remote-repos:list'),
+    save: (repos) => ipcRenderer.invoke('remote-repos:save', repos),
+    clone: (params) => ipcRenderer.invoke('remote-repos:clone', params),
+    getBranches: (params) => ipcRenderer.invoke('remote-repos:get-branches', params),
+    cherryPickPush: (params) => ipcRenderer.invoke('remote-repos:cherry-pick-push', params),
+    createMergeBranch: (params) => ipcRenderer.invoke('remote-repos:create-merge-branch', params),
+    testConnection: (params) => ipcRenderer.invoke('remote-repos:test-connection', params),
+    clearCache: () => ipcRenderer.invoke('remote-repos:clear-cache')
+  },
+
   // 系统操作
   system: {
     openExternal: (url) => ipcRenderer.invoke('open-external', url),

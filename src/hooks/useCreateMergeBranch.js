@@ -38,6 +38,10 @@ export const useCreateMergeBranch = ({
   loadCurrentBranch,
   loadBranches,
   setSettings,
+  selectedRemoteRepos = [],
+  selectedRemoteBranches = {},
+  remoteRepos = [],
+  sourceProjectPath,
 }) => {
   const handleCreateMergeBranch = async () => {
     const timestamp = new Date().toISOString();
@@ -49,23 +53,26 @@ export const useCreateMergeBranch = ({
       message.warning('请选择要合并的提交');
       return;
     }
-    if (selectedTargetBranches.length === 0) {
-      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支' : '请选择目标分支');
+
+    // 检查是否有外部仓库的工作
+    const hasRemoteWork = selectedRemoteRepos.length > 0 &&
+      selectedRemoteRepos.some(repoId => {
+        const branches = selectedRemoteBranches[repoId] || [];
+        return branches.length > 0;
+      });
+
+    if (selectedTargetBranches.length === 0 && !hasRemoteWork) {
+      message.warning(mergeType === 'custom' ? '请输入至少一个目标分支或选择外部仓库' : '请选择目标分支或选择外部仓库');
       return;
     }
 
     setLoading(true);
 
-    // custom 模式：验证分支是否存在
+    // custom 模式：验证分支是否存在（仅在有目标分支时验证）
     let effectiveBranches = selectedTargetBranches;
-    if (mergeType === 'custom') {
+    if (mergeType === 'custom' && selectedTargetBranches.length > 0) {
       const { valid, invalid } = await validateCustomBranches(selectedTargetBranches);
       invalid.forEach(b => message.warning(`分支 "${b}" 不存在，已跳过`));
-      if (valid.length === 0) {
-        message.error('没有有效的目标分支，操作终止');
-        setLoading(false);
-        return;
-      }
       effectiveBranches = valid;
     }
 
@@ -77,6 +84,7 @@ export const useCreateMergeBranch = ({
       return;
     }
 
+    const hasLocalWork = effectiveBranches.length > 0;
     const totalOperations = effectiveBranches.length;
     const results = [];
 
@@ -112,21 +120,23 @@ export const useCreateMergeBranch = ({
     console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 提取到问题单号: ${issueNumber || '无'}`);
     console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 当前用户名: ${username}`);
 
-    // 保存原始分支，用于最后切换回去
-    const originalBranch = currentBranch;
-    console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 保存原始分支: ${originalBranch}`);
-    
-    // 记录所有创建的本地分支，用于最后清理
-    const createdBranches = [];
-
-    // 存储每个目标分支的信息，用于第二阶段
-    const branchInfos = [];
-
     // 在循环开始前保存 selectedCommits 的副本，确保在循环期间不会被修改
     const commitsToCherryPick = [...selectedCommits];
     console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 保存提交列表副本: ${commitsToCherryPick.length}个提交`, commitsToCherryPick);
 
+    // 本地仓库操作变量（仅在有本地目标分支时使用）
+    let originalBranch = null;
+    const createdBranches = [];
+    const branchInfos = [];
+
     try {
+      // ========== 开始处理本地仓库目标分支 ==========
+      if (hasLocalWork) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] ========== 开始处理本地仓库目标分支 ==========`);
+
+        originalBranch = currentBranch;
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 保存原始分支: ${originalBranch}`);
+      }
       // ========== 第一阶段：对所有目标分支进行 cherry-pick ==========
       console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] ========== 第一阶段：Cherry-pick 到所有目标分支 ==========`);
 
@@ -419,6 +429,141 @@ export const useCreateMergeBranch = ({
         }));
         
         console.log(`[${opTimestamp}] [handleCreateMergeBranch] 第 ${currentOp}/${totalOperations} 个目标分支推送和MR创建完成`);
+      } // end if (hasLocalWork) - second phase
+
+      // ========== 第三阶段：处理外部仓库（如有） ==========
+      if (hasRemoteWork) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] ========== 第三阶段：处理外部仓库 ==========`);
+
+        for (const repoId of selectedRemoteRepos) {
+          const branches = selectedRemoteBranches[repoId] || [];
+          if (branches.length === 0) continue;
+
+          const repo = remoteRepos.find(r => r.id === repoId);
+          if (!repo) continue;
+
+          const repoTimestamp = new Date().toISOString();
+          console.log(`[${repoTimestamp}] [handleCreateMergeBranch] 处理外部仓库: ${repo.name}`);
+
+          setMergeProgress(prev => ({
+            ...prev,
+            status: `准备外部仓库: ${repo.name}`
+          }));
+
+          const cloneResult = await window.electronAPI.remoteRepos.clone({
+            url: repo.url,
+            repoId: repo.id
+          });
+
+          if (!cloneResult.success) {
+            console.error(`[${repoTimestamp}] [handleCreateMergeBranch] Clone 失败: ${cloneResult.error}`);
+            results.push({
+              success: false,
+              sourceBranch: currentBranch,
+              targetBranch: `${repo.name} (外部仓库)`,
+              mergeBranch: '-',
+              mrUrl: '',
+              error: `Clone 失败: ${cloneResult.error}`
+            });
+            continue;
+          }
+
+          for (let i = 0; i < branches.length; i++) {
+            const targetBranch = branches[i];
+            const opTimestamp = new Date().toISOString();
+
+            console.log(`[${opTimestamp}] [handleCreateMergeBranch] 处理外部仓库 ${repo.name} 的分支: ${targetBranch}`);
+
+            setMergeProgress(prev => ({
+              ...prev,
+              status: `外部仓库 ${repo.name} (${i + 1}/${branches.length}): ${targetBranch}`
+            }));
+
+            const externalMergeBranchName = generateBranchName(targetBranch, issueNumber, username);
+
+            const createResult = await window.electronAPI.remoteRepos.createMergeBranch({
+              repoPath: cloneResult.repoPath,
+              targetBranch,
+              mergeBranchName: externalMergeBranchName,
+              commitShas: commitsToCherryPick,
+              sourceProjectPath
+            });
+
+            if (createResult.success) {
+              console.log(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 ${repo.name}/${targetBranch} 成功，合并分支: ${createResult.mergeBranchName}`);
+
+              let externalMrUrl = '';
+              try {
+                const remoteUrl = createResult.remoteUrl || repo.url || '';
+                console.log(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 remoteUrl: ${remoteUrl}`);
+                const urlMatch = remoteUrl.match(/(?:https?:\/\/[^/]+\/|git@[^:]+:)(.+?)(?:\.git)?$/);
+                if (urlMatch && settings.gitlabServerUrl && settings.gitlabAccessToken) {
+                  const externalProjectPath = urlMatch[1];
+                  console.log(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库项目路径: ${externalProjectPath}`);
+
+                  const externalProjectIdResult = await window.electronAPI.gitlab.getProjectId(
+                    settings.gitlabServerUrl,
+                    settings.gitlabAccessToken,
+                    externalProjectPath
+                  );
+
+                  if (externalProjectIdResult.success) {
+                    const externalProjectId = externalProjectIdResult.projectId;
+                    console.log(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 projectId: ${externalProjectId}`);
+
+                    const externalMrResult = await window.electronAPI.gitlab.createMergeRequest(
+                      settings.gitlabServerUrl,
+                      settings.gitlabAccessToken,
+                      externalProjectId,
+                      createResult.mergeBranchName,
+                      targetBranch,
+                      `${createResult.mergeBranchName} -> ${targetBranch} (跨仓库)`,
+                      `由 Git合并辅助工具自动创建（跨仓库）\n\n源仓库: ${currentBranch}\n源分支: ${currentBranch}\n目标仓库: ${repo.name}\n目标分支: ${targetBranch}\n提交数量: ${commitsToCherryPick.length}`
+                    );
+
+                    if (externalMrResult.success) {
+                      externalMrUrl = `${settings.gitlabServerUrl.replace(/\/$/, '')}/${externalProjectPath}/-/merge_requests/${externalMrResult.mergeRequest?.iid || ''}`;
+                      console.log(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 MR 创建成功: ${externalMrUrl}`);
+                    } else {
+                      console.warn(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 MR 创建失败: ${externalMrResult.error}`);
+                    }
+                  } else {
+                    console.warn(`[${opTimestamp}] [handleCreateMergeBranch] 获取外部仓库 projectId 失败: ${externalProjectIdResult.error}`);
+                  }
+                } else {
+                  console.warn(`[${opTimestamp}] [handleCreateMergeBranch] 无法解析外部仓库项目路径或 GitLab 配置缺失`);
+                }
+              } catch (mrError) {
+                console.warn(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库创建 MR 异常: ${mrError.message}`);
+              }
+
+              results.push({
+                success: true,
+                sourceBranch: currentBranch,
+                targetBranch: `${repo.name}/${targetBranch} (外部仓库)`,
+                mergeBranch: createResult.mergeBranchName || externalMergeBranchName,
+                mrUrl: externalMrUrl,
+                error: null
+              });
+            } else {
+              const errorDetail = createResult.error ||
+                (createResult.results?.errors || []).map(e => `${e.sha}: ${e.error}`).join('; ') ||
+                (createResult.results?.errors || []).map(e => `${e.sha}: ${e.detail}`).join('; ') ||
+                '创建合并分支失败';
+              console.error(`[${opTimestamp}] [handleCreateMergeBranch] 外部仓库 ${repo.name}/${targetBranch} 失败: ${errorDetail}`);
+              results.push({
+                success: false,
+                sourceBranch: currentBranch,
+                targetBranch: `${repo.name}/${targetBranch} (外部仓库)`,
+                mergeBranch: externalMergeBranchName,
+                mrUrl: '',
+                error: errorDetail
+              });
+            }
+          }
+        }
+
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 外部仓库处理完成`);
       }
 
       const finalTimestamp = new Date().toISOString();

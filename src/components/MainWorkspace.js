@@ -14,6 +14,7 @@ import {
   ReloadOutlined,
   BranchesOutlined,
   GlobalOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import './MainWorkspace.css';
 import { mergeMultiLanguageContent, isMultiLanguageConflict } from '../utils/mergeUtils';
@@ -39,6 +40,7 @@ import {
 import { useDetectOperations } from '../hooks/useDetectOperations';
 import { useCherryPickAndPush } from '../hooks/useCherryPickAndPush';
 import { useCreateMergeBranch } from '../hooks/useCreateMergeBranch';
+import { useRemoteCherryPick } from '../hooks/useRemoteCherryPick';
 
 const { Header, Content } = Layout;
 
@@ -59,6 +61,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [showMyCommits, setShowMyCommits] = useState(false);
   const [allCommits, setAllCommits] = useState([]);
   const allCommitsLoadedRef = useRef(false);
+  const isRefreshingRef = useRef(false);
   const searchHasLoadedRef = useRef(false);
   const searchDebouncerRef = useRef(null);
   const [initialized, setInitialized] = useState(false);
@@ -106,6 +109,13 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
   const [, setConflictAutoMerging] = useState(false);
   const conflictResolveRef = useRef(null);
+
+  // 外部仓库相关状态
+  const [remoteRepos, setRemoteRepos] = useState([]);
+  const [selectedRemoteRepos, setSelectedRemoteRepos] = useState([]);
+  const [remoteRepoBranches, setRemoteRepoBranches] = useState({});
+  const [selectedRemoteBranches, setSelectedRemoteBranches] = useState({});
+  const [loadingRemoteRepos, setLoadingRemoteRepos] = useState(false);
 
   // 优化：使用 ref 存储 selectedCommits 的 Set 以提高查找性能
   const selectedCommitsRef = useRef(new Set());
@@ -243,6 +253,9 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
         await loadBranches();
         console.log(`[${timestamp}] [init] 分支加载完成`);
         
+        await loadRemoteRepos();
+        console.log(`[${timestamp}] [init] 外部仓库加载完成`);
+        
         const branch = await loadCurrentBranch();
         console.log(`[${timestamp}] [init] 当前分支加载完成`);
 
@@ -308,6 +321,93 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
       message.error('加载分支失败: ' + error.message);
     }
   };
+
+  const loadRemoteRepos = async () => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [loadRemoteRepos] 开始加载外部仓库列表`);
+    
+    try {
+      console.log(`[${timestamp}] [loadRemoteRepos] 调用 API 获取仓库列表...`);
+      const repos = await window.electronAPI.remoteRepos.list();
+      
+      console.log(`[${timestamp}] [loadRemoteRepos] 获取到 ${repos?.length || 0} 个仓库`);
+      setRemoteRepos(repos || []);
+      console.log(`[${timestamp}] [loadRemoteRepos] 仓库列表已设置到状态`);
+    } catch (error) {
+      console.error(`[${timestamp}] [loadRemoteRepos] 加载仓库列表失败:`, error);
+    }
+  };
+
+  // 监听选中仓库变化，自动加载分支
+  useEffect(() => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [useEffect] 选中仓库变化，开始加载分支`);
+    
+    if (selectedRemoteRepos.length === 0) {
+      setRemoteRepoBranches({});
+      return;
+    }
+
+    setLoadingRemoteRepos(true);
+    
+    const loadBranchesForRepos = async () => {
+      try {
+        const newBranches = {};
+        
+        for (const repoId of selectedRemoteRepos) {
+          let cachedBranches = null;
+          setRemoteRepoBranches(prev => {
+            if (prev[repoId]) {
+              cachedBranches = prev[repoId];
+            }
+            return prev;
+          });
+          
+          if (cachedBranches) {
+            newBranches[repoId] = cachedBranches;
+            continue;
+          }
+
+          console.log(`[${timestamp}] [loadBranchesForRepos] 加载仓库 ${repoId} 的分支...`);
+          
+          const repo = remoteRepos.find(r => r.id === repoId);
+          if (!repo) {
+            console.warn(`[${timestamp}] [loadBranchesForRepos] 未找到仓库 ${repoId}`);
+            continue;
+          }
+
+          const cloneResult = await window.electronAPI.remoteRepos.clone({ 
+            repoId, 
+            url: repo.url 
+          });
+          
+          if (!cloneResult.success) {
+            console.error(`[${timestamp}] [loadBranchesForRepos] Clone 失败: ${cloneResult.error}`);
+            message.error(`Clone 仓库 ${repo.name} 失败: ${cloneResult.error}`);
+            continue;
+          }
+
+          const branches = await window.electronAPI.remoteRepos.getBranches({ 
+            repoPath: cloneResult.repoPath 
+          });
+          
+          console.log(`[${timestamp}] [loadBranchesForRepos] 获取到 ${branches?.length || 0} 个分支`);
+          newBranches[repoId] = branches || [];
+        }
+        
+        setRemoteRepoBranches(prev => ({ ...prev, ...newBranches }));
+        console.log(`[${timestamp}] [loadBranchesForRepos] 分支加载完成`);
+      } catch (error) {
+        console.error(`[${timestamp}] [loadBranchesForRepos] 加载分支失败:`, error);
+        message.error('加载外部仓库分支失败');
+      } finally {
+        setLoadingRemoteRepos(false);
+      }
+    };
+
+    loadBranchesForRepos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRemoteRepos]);
 
   const loadCurrentBranch = async () => {
     const timestamp = new Date().toISOString();
@@ -479,18 +579,27 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   };
 
   const handleRefresh = async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setLoading(true);
     setSearchText('');
     setShowMyCommits(false);
     setAllCommits([]);
     allCommitsLoadedRef.current = false;
+    // 先从远程 fetch 最新提交
+    try {
+      await window.electronAPI.git.fetch();
+    } catch (e) {
+      console.warn('[handleRefresh] fetch 失败:', e.message);
+    }
 
     const branch = viewBranch;
     if (!branch) {
       message.warning('当前无分支，无法拉取远程更新');
+      setLoading(false);
+      isRefreshingRef.current = false;
       return;
     }
-
-    setLoading(true);
     let stashed = false;
 
     try {
@@ -569,6 +678,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
         }
       }
       setLoading(false);
+      isRefreshingRef.current = false;
     }
   };
 
@@ -593,6 +703,41 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     setSettings,
   });
 
+  // 跨仓库遴选推送
+  const handleRemoteCherryPick = useRemoteCherryPick({
+    selectedCommits,
+    selectedRemoteRepos,
+    remoteRepoBranches,
+    selectedRemoteBranches,
+    remoteRepos,
+    sourceProjectPath: project?.path,
+    setLoading,
+    setCherryPickProgress,
+    setCherryPickResultModal,
+  });
+
+  // 整合遴选推送：根据选择情况分叉执行
+  const handleCombinedCherryPickAndPush = async () => {
+    const hasLocalTargets = selectedTargetBranches.length > 0;
+    const hasRemoteTargets = selectedRemoteRepos.length > 0 &&
+      selectedRemoteRepos.some(id => (selectedRemoteBranches[id] || []).length > 0);
+
+    if (hasLocalTargets) {
+      await handleCherryPickAndPush();
+    }
+    if (hasRemoteTargets) {
+      const remoteResult = await handleRemoteCherryPick();
+      if (remoteResult?.hasRemoteWork && remoteResult.results) {
+        setCherryPickResultModal(prev => ({
+          ...prev,
+          visible: true,
+          success: (prev.results || []).every(r => r.success) && remoteResult.results.every(r => r.success),
+          results: [...(prev.results || []), ...remoteResult.results]
+        }));
+      }
+    }
+  };
+
   // 创建合并分支操作（抽取到 hook）
   const handleCreateMergeBranch = useCreateMergeBranch({
     selectedCommits,
@@ -613,6 +758,10 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     loadCurrentBranch,
     loadBranches,
     setSettings,
+    selectedRemoteRepos,
+    selectedRemoteBranches,
+    remoteRepos,
+    sourceProjectPath: project?.path,
   });
 
   const { handleDetectConflicts, handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
@@ -724,10 +873,36 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           <Button icon={<GlobalOutlined />} onClick={handleOpenInBrowser}>
             浏览器打开
           </Button>
+          <Button icon={<SettingOutlined />} onClick={() => setSettingsVisible(true)}>
+            设置
+          </Button>
         </Space>
       </Header>
 
       <Content className="workspace-content">
+        {/* 刷新加载浮层 */}
+        {loading && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255, 255, 255, 0.75)',
+            zIndex: 1000,
+            pointerEvents: 'none',
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: 16, color: '#1890ff', fontSize: 21, fontWeight: 500 }}>
+                正在加载远程仓库分支提交内容...
+              </div>
+            </div>
+          </div>
+        )}
         <CommitListPanel
           searchText={searchText}
           setSearchText={setSearchText}
@@ -755,7 +930,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           branches={branches}
           settings={settings}
           loading={loading}
-          handleCherryPickAndPush={handleCherryPickAndPush}
+          handleCherryPickAndPush={handleCombinedCherryPickAndPush}
           handleCreateMergeBranch={handleCreateMergeBranch}
           handleDetectConflicts={handleDetectConflicts}
           handleDetectChanges={handleDetectChanges}
@@ -765,6 +940,13 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           versionDetecting={versionDetecting}
           selectedCommitsCount={selectedCommits.length}
           isDetectConflictDisabled={isDetectConflictDisabled}
+          remoteRepos={remoteRepos}
+          selectedRemoteRepos={selectedRemoteRepos}
+          setSelectedRemoteRepos={setSelectedRemoteRepos}
+          remoteRepoBranches={remoteRepoBranches}
+          selectedRemoteBranches={selectedRemoteBranches}
+          setSelectedRemoteBranches={setSelectedRemoteBranches}
+          loadingRemoteRepos={loadingRemoteRepos}
         />
       </Content>
 

@@ -13,6 +13,7 @@ const registerGitHandlers = require('./ipc-handlers/ipc-git-operations');
 const registerGitVersionHandlers = require('./ipc-handlers/ipc-git-version');
 const registerGitLabHandlers = require('./ipc-handlers/ipc-gitlab');
 const registerSystemHandlers = require('./ipc-handlers/ipc-system');
+const registerRemoteRepoHandlers = require('./ipc-handlers/ipc-remote-repos');
 
 initLogger();
 
@@ -21,6 +22,8 @@ const store = new Store({
   name: 'git-merge-assistant-config',
   defaults: {
     recentProjects: [],
+    remoteRepos: [],
+    projectsRepos: {},
     settings: {
       testBranches: 'smoke\nstable/sp4/smoke\nstable/sp3/smoke\nstable/sp2/smoke\nstable/sp1/smoke',
       releaseBranches: 'develop\nstable/sp4/develop\nstable/sp3/develop\nstable/sp2/develop\nstable/sp1/develop',
@@ -325,6 +328,7 @@ function setupIpcHandlers() {
     getLogFilePath,
     openProject
   });
+  registerRemoteRepoHandlers(ipcMain, { store, getProjectPath });
 }
 
 // 应用生命周期

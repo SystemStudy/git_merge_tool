@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Alert, Tabs, message, Divider } from 'antd';
 import { ExportOutlined } from '@ant-design/icons';
+import RemoteReposManager from './RemoteReposManager';
 
 const THEME_COLORS = [
   { name: '靛蓝', value: '#4F46E5' },
@@ -186,6 +187,15 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
                 <Input.TextArea rows={4} />
               </Form.Item>
             </>
+          ),
+        },
+        {
+          key: 'remoteRepos',
+          label: '仓库管理',
+          children: (
+            <div>
+              <RemoteReposManager />
+            </div>
           ),
         },
       ]} />
