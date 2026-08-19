@@ -16,7 +16,6 @@ function App() {
     // 监听主进程的项目打开事件
     const handleProjectOpened = (data) => {
       setCurrentProject(data);
-      message.success(`已打开项目: ${data.info.name}`);
     };
 
     // 监听服务端全局配置获取状态：失败时警告用户

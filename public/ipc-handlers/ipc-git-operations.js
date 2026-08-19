@@ -363,63 +363,6 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     return { success: true };
   });
 
-  ipcMain.handle('git-cherry-pick', async (event, commitShas) => {
-    if (!getGit()) throw new Error('未打开项目');
-
-    const git = getGit();
-
-    // 首先尝试清理任何正在进行的 cherry-pick 状态
-    try {
-      await git.raw(['cherry-pick', '--abort']);
-    } catch {
-      // 忽略错误，可能是没有正在进行的 cherry-pick
-    }
-
-    const results = { success: [], skipped: [], errors: [] };
-
-    for (const sha of commitShas) {
-      console.log(`[git-cherry-pick] 开始 cherry-pick 提交: ${sha}`);
-      try {
-        await git.raw(['cherry-pick', sha]);
-        results.success.push(sha);
-        console.log(`[git-cherry-pick] 成功 cherry-pick 提交: ${sha}`);
-      } catch (error) {
-        console.log(`[git-cherry-pick] cherry-pick 提交 ${sha} 失败: ${error.message}`);
-
-        // 检查是否是提交已存在的错误
-        if (error.message.includes('empty') ||
-            error.message.includes('nothing to commit') ||
-            error.message.includes('already exists')) {
-          console.log(`[git-cherry-pick] 提交 ${sha} 已存在，尝试跳过`);
-          try {
-            await git.raw(['cherry-pick', '--skip']);
-            results.skipped.push(sha);
-            console.log(`[git-cherry-pick] 已跳过提交: ${sha}`);
-          } catch (skipError) {
-            console.log(`[git-cherry-pick] 跳过失败，尝试中止: ${skipError.message}`);
-            try {
-              await git.raw(['cherry-pick', '--abort']);
-            } catch (abortError) {
-              console.log(`[git-cherry-pick] 中止失败: ${abortError.message}`);
-            }
-            results.skipped.push(sha);
-          }
-        } else {
-          console.log(`[git-cherry-pick] 非预期错误，尝试中止: ${error.message}`);
-          try {
-            await git.raw(['cherry-pick', '--abort']);
-          } catch (abortError) {
-            console.log(`[git-cherry-pick] 中止失败: ${abortError.message}`);
-          }
-          results.errors.push({ sha, error: error.message });
-        }
-      }
-    }
-
-    console.log(`[git-cherry-pick] 完成。结果:`, results);
-    return results;
-  });
-
   ipcMain.handle('git-push', async (event, branch) => {
     if (!getGit()) throw new Error('未打开项目');
     

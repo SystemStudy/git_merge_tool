@@ -328,7 +328,7 @@ function setupIpcHandlers() {
     getLogFilePath,
     openProject
   });
-  registerRemoteRepoHandlers(ipcMain, { store, getProjectPath });
+  registerRemoteRepoHandlers(ipcMain, { getGit });
 }
 
 // 应用生命周期

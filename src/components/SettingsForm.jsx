@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Alert, Tabs, message, Divider } from 'antd';
 import { ExportOutlined } from '@ant-design/icons';
-import RemoteReposManager from './RemoteReposManager';
+
 
 const THEME_COLORS = [
   { name: '靛蓝', value: '#4F46E5' },
@@ -85,6 +85,29 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
           label: '常规设置',
           children: (
             <>
+              <Form.Item
+                label="GitLab服务器地址"
+                name="gitlabServerUrl"
+                rules={[{ required: true, message: '请输入GitLab地址' }]}
+              >
+                <Input placeholder="https://git.landray.com.cn/" />
+              </Form.Item>
+              <Form.Item
+                label="GitLab访问令牌"
+                name="gitlabAccessToken"
+              >
+                <Input.Password placeholder="输入您的Personal Access Token" />
+              </Form.Item>
+              <Button onClick={handleTestToken} style={{ marginTop: 8 }}>测试令牌</Button>
+              {testResult && (
+                <Alert
+                  style={{ marginTop: 16 }}
+                  type={testResult.success ? 'success' : 'error'}
+                  message={testResult.success ? '验证成功' : '验证失败'}
+                  description={testResult.success ? `用户: ${testResult.user?.name}` : testResult.error}
+                />
+              )}
+              <Divider />
               <Form.Item label="主题颜色">
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   {THEME_COLORS.map((c) => {
@@ -134,42 +157,12 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
           ),
         },
         {
-          key: 'gitlab',
-          label: 'GitLab设置',
-          children: (
-            <>
-              <Form.Item
-                label="GitLab服务器地址"
-                name="gitlabServerUrl"
-                rules={[{ required: true, message: '请输入GitLab地址' }]}
-              >
-                <Input placeholder="https://git.landray.com.cn/" />
-              </Form.Item>
-              <Form.Item
-                label="GitLab访问令牌"
-                name="gitlabAccessToken"
-              >
-                <Input.Password placeholder="输入您的Personal Access Token" />
-              </Form.Item>
-              <Button onClick={handleTestToken}>测试令牌</Button>
-              {testResult && (
-                <Alert
-                  style={{ marginTop: 16 }}
-                  type={testResult.success ? 'success' : 'error'}
-                  message={testResult.success ? '验证成功' : '验证失败'}
-                  description={testResult.success ? `用户: ${testResult.user?.name}` : testResult.error}
-                />
-              )}
-            </>
-          ),
-        },
-        {
           key: 'branches',
           label: '分支配置',
           children: (
             <>
               <Form.Item
-                label="提测目标分支 (每行一个)"
+                label="需求提测目标分支 (每行一个)"
                 name="testBranches"
               >
                 <Input.TextArea rows={4} />
@@ -181,23 +174,14 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
                 <Input.TextArea rows={4} />
               </Form.Item>
               <Form.Item
-                label="Bug提测目标分支 (每行一个)"
+                label="bugfix 目标分支 (每行一个)"
                 name="bugTestBranches"
               >
                 <Input.TextArea rows={4} />
               </Form.Item>
             </>
           ),
-        },
-        {
-          key: 'remoteRepos',
-          label: '仓库管理',
-          children: (
-            <div>
-              <RemoteReposManager />
-            </div>
-          ),
-        },
+        }
       ]} />
 
       <Form.Item>

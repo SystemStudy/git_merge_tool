@@ -302,7 +302,7 @@ export const useCherryPickAndPush = ({
       }
       
       await loadCurrentBranch();
-      await loadCommits(viewBranch, true);
+      await loadCommits(viewBranch, true, false);
     }
   };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Modal, Progress, Alert, Card, Tag, Button, Space, Table, Tabs, message, Input
+  Modal, Progress, Alert, Card, Tag, Button, Space, Table, Tabs, message, Input, Spin
 } from 'antd';
 import {
   BranchesOutlined, CopyOutlined, SearchOutlined
@@ -388,9 +388,39 @@ export function CherryPickProgressModal({ cherryPickProgress }) {
 }
 
 /**
+ * 刷新加载 Modal（本地重载 / 远程 fetch 单次操作，无分步进度，用 Spin 展示 loading）
+ */
+export function RefreshLoadingModal({ visible, mode = 'remote' }) {
+  const refreshConfig = {
+    local: { title: '刷新本地提交记录', description: '正在加载本地提交记录...' },
+    remote: { title: '刷新远程提交记录', description: '正在同步远程仓库分支提交内容...' }
+  }[mode] || { title: '刷新远程提交记录', description: '正在同步远程仓库分支提交内容...' };
+
+  return (
+    <Modal
+      title={refreshConfig.title}
+      open={visible}
+      closable={false}
+      footer={null}
+      maskClosable={false}
+      width={600}
+      zIndex={1000}
+      className="merge-progress-modal"
+    >
+      <div style={{ padding: '32px 0', textAlign: 'center' }}>
+        <Spin size="large" />
+        <div style={{ marginTop: 20, color: '#1890ff', fontSize: 16, fontWeight: 500 }}>
+          {refreshConfig.description}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
  * CherryPick 结果 Modal
  */
-export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResultModal }) {
+export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResultModal, projectName }) {
   return (
     <Modal
       title="遴选推送结果"
@@ -402,16 +432,16 @@ export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResu
           icon={<CopyOutlined />}
           onClick={() => {
             const formatResults = () => {
-              // 只复制成功的结果
+              // 只复制推送成功的结果，过滤掉失败的分支
               const successResults = cherryPickResultModal.results.filter(r => r.success);
               if (successResults.length === 0) {
                 return '无成功的推送';
               }
 
-              let text = '=== Git遴选推送信息 ===\n';
+              let text = `模块: ${projectName || '-'}\n`;
+              text += '目标分支:\n';
               successResults.forEach((result, index) => {
-                text += `${index + 1}. 目标分支: ${result.targetBranch}\n`;
-                text += '   状态: 推送成功\n';
+                text += `${index + 1}. ${result.targetBranch}\n`;
               });
               return text;
             };
@@ -478,95 +508,6 @@ export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResu
           type={cherryPickResultModal.success ? 'success' : 'warning'}
           showIcon
         />
-      </div>
-    </Modal>
-  );
-}
-
-/**
- * 冲突检测进度 Modal
- */
-export function ConflictProgressModal({ conflictProgress }) {
-  return (
-    <Modal
-      title="检测冲突"
-      open={conflictProgress.visible}
-      onCancel={() => {}}
-      footer={null}
-      closable={false}
-      maskClosable={false}
-      width={500}
-    >
-      <div style={{ padding: '20px 0', position: 'relative' }}>
-        <Progress
-          percent={conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}
-          status="active"
-          strokeWidth={22}
-          format={() => ''}
-        />
-        <span className="progress-percent-overlay">
-          {conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}%
-        </span>
-        <div style={{ marginTop: 8, color: '#666' }}>
-          {conflictProgress.status}
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/**
- * 冲突检测结果 Modal
- */
-export function ConflictResultModal({ conflictResultModal, setConflictResultModal }) {
-  return (
-    <Modal
-      title="冲突检测结果"
-      open={conflictResultModal.visible}
-      onCancel={() => setConflictResultModal({ visible: false, results: [] })}
-      footer={[
-        <Button
-          key="close"
-          type="primary"
-          onClick={() => setConflictResultModal({ visible: false, results: [] })}
-        >
-          关闭
-        </Button>
-      ]}
-      width={500}
-    >
-      <div style={{ padding: '10px 0' }}>
-        <Alert
-          message={
-            conflictResultModal.results.every(r => !r.hasConflict)
-              ? '所有分支均无冲突'
-              : '部分分支存在冲突'
-          }
-          type={
-            conflictResultModal.results.every(r => !r.hasConflict)
-              ? 'success'
-              : 'warning'
-          }
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-        {conflictResultModal.results.map((result, index) => (
-          <Card
-            key={index}
-            size="small"
-            style={{
-              marginBottom: 8,
-              borderLeft: `4px solid ${result.hasConflict ? '#ff4d4f' : '#52c41a'}`
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 500 }}>{result.targetBranch}</span>
-              <Tag color={result.hasConflict ? 'error' : 'success'}>
-                {result.hasConflict ? '有冲突' : '无冲突'}
-              </Tag>
-            </div>
-          </Card>
-        ))}
       </div>
     </Modal>
   );

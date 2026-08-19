@@ -32,7 +32,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pull: (branch) => ipcRenderer.invoke('git-pull', branch),
     forceSyncBranch: (branch) => ipcRenderer.invoke('git-force-sync-branch', branch),
     checkout: (branch) => ipcRenderer.invoke('git-checkout', branch),
-    cherryPick: (commitShas) => ipcRenderer.invoke('git-cherry-pick', commitShas),
     push: (branch) => ipcRenderer.invoke('git-push', branch),
     createBranch: (branchName, baseBranch) => ipcRenderer.invoke('git-create-branch', branchName, baseBranch),
     deleteLocalBranch: (branchName, force) => ipcRenderer.invoke('git-delete-local-branch', branchName, force),
@@ -73,16 +72,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('gitlab-create-merge-request', serverUrl, token, projectId, sourceBranch, targetBranch, title, description, removeSourceBranch)
   },
 
-  // 远程仓库操作
+  // 远程仓库操作（基于当前项目原生 git remote）
   remoteRepos: {
     list: () => ipcRenderer.invoke('remote-repos:list'),
-    save: (repos) => ipcRenderer.invoke('remote-repos:save', repos),
-    clone: (params) => ipcRenderer.invoke('remote-repos:clone', params),
-    getBranches: (params) => ipcRenderer.invoke('remote-repos:get-branches', params),
-    cherryPickPush: (params) => ipcRenderer.invoke('remote-repos:cherry-pick-push', params),
-    createMergeBranch: (params) => ipcRenderer.invoke('remote-repos:create-merge-branch', params),
-    testConnection: (params) => ipcRenderer.invoke('remote-repos:test-connection', params),
-    clearCache: () => ipcRenderer.invoke('remote-repos:clear-cache')
+    add: (params) => ipcRenderer.invoke('remote-repos:add', params),
+    update: (params) => ipcRenderer.invoke('remote-repos:update', params),
+    remove: (params) => ipcRenderer.invoke('remote-repos:remove', params),
+    testConnection: (params) => ipcRenderer.invoke('remote-repos:test-connection', params)
   },
 
   // 系统操作

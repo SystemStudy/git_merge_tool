@@ -14,13 +14,13 @@ import {
   ReloadOutlined,
   BranchesOutlined,
   GlobalOutlined,
-  SettingOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 import './MainWorkspace.css';
-import { mergeMultiLanguageContent, isMultiLanguageConflict } from '../utils/mergeUtils';
-import { showPullChoiceDialog } from '../utils/workspaceHelpers';
+import { mergeMultiLanguageContent } from '../utils/mergeUtils';
 import { performanceMonitor } from '../utils/performanceUtils';
 import SettingsForm from './SettingsForm';
+import RemoteReposManager from './RemoteReposManager';
 import OperationPanel from './OperationPanel';
 import CommitListPanel from './CommitListPanel';
 import {
@@ -29,18 +29,16 @@ import {
   ConflictResolveModal,
   CherryPickProgressModal,
   CherryPickResultModal,
-  ConflictProgressModal,
-  ConflictResultModal,
   ChangeDetectProgressModal,
   ChangeDetectResultModal,
   VersionDetectProgressModal,
   VersionDetectResultModal,
   BranchSwitcherModal,
+  RefreshLoadingModal,
 } from './ProgressModals';
 import { useDetectOperations } from '../hooks/useDetectOperations';
 import { useCherryPickAndPush } from '../hooks/useCherryPickAndPush';
 import { useCreateMergeBranch } from '../hooks/useCreateMergeBranch';
-import { useRemoteCherryPick } from '../hooks/useRemoteCherryPick';
 
 const { Header, Content } = Layout;
 
@@ -52,10 +50,13 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [selectedTargetBranches, setSelectedTargetBranches] = useState([]);
   const [customBranchInputs, setCustomBranchInputs] = useState(['']); // 指定分支合并模式的动态分支输入
   const [mergeType, setMergeType] = useState('bug');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // 遴选 / 创建合并分支操作时的按钮 loading 态
+  const [refreshing, setRefreshing] = useState(false); // 刷新 / 加载提交内容时的弹窗 loading 态
+  const [refreshMode, setRefreshMode] = useState('local'); // 刷新弹窗模式：local=本地提交记录，remote=远程提交记录
   const [loadingMore, setLoadingMore] = useState(false);
   const [settings, setSettings] = useState({});
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [repoManagerVisible, setRepoManagerVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [showMyCommits, setShowMyCommits] = useState(false);
@@ -64,6 +65,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const isRefreshingRef = useRef(false);
   const searchHasLoadedRef = useRef(false);
   const searchDebouncerRef = useRef(null);
+  const loadedViewBranchRef = useRef(null); // 记录已加载 commits 的分支；相同则跳过 viewBranch useEffect 重复加载，避免进入项目（StrictMode 双挂载）时刷新弹窗闪现
   const [initialized, setInitialized] = useState(false);
   const [viewBranch, setViewBranch] = useState(''); // 当前查看的分支（用于显示提交记录）
   const [originalBranch, setOriginalBranch] = useState(''); // 用户的初始分支（操作后恢复至此）
@@ -97,9 +99,6 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [mergeResultModal, setMergeResultModal] = useState({ visible: false, success: false, results: [] });
   const [cherryPickProgress, setCherryPickProgress] = useState({ visible: false, current: 0, total: 0, status: '', results: [] });
   const [cherryPickResultModal, setCherryPickResultModal] = useState({ visible: false, success: false, results: [] });
-  const [conflictDetecting, setConflictDetecting] = useState(false);
-  const [conflictProgress, setConflictProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
-  const [conflictResultModal, setConflictResultModal] = useState({ visible: false, results: [] });
   const [changeDetecting, setChangeDetecting] = useState(false);
   const [changeDetectProgress, setChangeDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
   const [changeDetectResultModal, setChangeDetectResultModal] = useState({ visible: false, results: [], isSingleCommit: false, allExist: true, missingBySubject: {}, commitSubjects: [] });
@@ -109,13 +108,6 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [conflictModal, setConflictModal] = useState({ visible: false, files: [], branch: '', sha: '' });
   const [, setConflictAutoMerging] = useState(false);
   const conflictResolveRef = useRef(null);
-
-  // 外部仓库相关状态
-  const [remoteRepos, setRemoteRepos] = useState([]);
-  const [selectedRemoteRepos, setSelectedRemoteRepos] = useState([]);
-  const [remoteRepoBranches, setRemoteRepoBranches] = useState({});
-  const [selectedRemoteBranches, setSelectedRemoteBranches] = useState({});
-  const [loadingRemoteRepos, setLoadingRemoteRepos] = useState(false);
 
   // 优化：使用 ref 存储 selectedCommits 的 Set 以提高查找性能
   const selectedCommitsRef = useRef(new Set());
@@ -252,16 +244,18 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
         
         await loadBranches();
         console.log(`[${timestamp}] [init] 分支加载完成`);
-        
-        await loadRemoteRepos();
-        console.log(`[${timestamp}] [init] 外部仓库加载完成`);
-        
+
         const branch = await loadCurrentBranch();
         console.log(`[${timestamp}] [init] 当前分支加载完成`);
 
         if (branch) {
           setViewBranch(branch);
           setOriginalBranch(branch);
+          // 首屏提交纳入初始化加载（静默，不弹刷新弹窗），并记录已加载分支，
+          // 避免 initialized 变化触发的 viewBranch useEffect 重复加载导致刷新弹窗闪现
+          loadedViewBranchRef.current = branch;
+          await loadCommits(branch, true, false);
+          console.log(`[${timestamp}] [init] 首屏提交记录加载完成`);
         }
 
         setInitialized(true);
@@ -281,7 +275,14 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     console.log(`[${timestamp}] [useEffect commits] - initialized: ${initialized}`);
 
     if (viewBranch && initialized) {
+      // 该分支的 commits 已加载过（init 首屏或上一次切换），跳过本次触发，
+      // 避免进入项目（StrictMode 双挂载 / 并发 setState）时重复加载导致刷新弹窗闪现
+      if (loadedViewBranchRef.current === viewBranch) {
+        console.log(`[${timestamp}] [useEffect commits] 分支 ${viewBranch} 已加载，跳过本次触发`);
+        return;
+      }
       console.log(`[${timestamp}] [useEffect commits] 条件满足，开始加载提交记录`);
+      loadedViewBranchRef.current = viewBranch;
       setSelectedCommits([]);
       loadCommits(viewBranch, true);
       allCommitsLoadedRef.current = false;
@@ -322,93 +323,6 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     }
   };
 
-  const loadRemoteRepos = async () => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [loadRemoteRepos] 开始加载外部仓库列表`);
-    
-    try {
-      console.log(`[${timestamp}] [loadRemoteRepos] 调用 API 获取仓库列表...`);
-      const repos = await window.electronAPI.remoteRepos.list();
-      
-      console.log(`[${timestamp}] [loadRemoteRepos] 获取到 ${repos?.length || 0} 个仓库`);
-      setRemoteRepos(repos || []);
-      console.log(`[${timestamp}] [loadRemoteRepos] 仓库列表已设置到状态`);
-    } catch (error) {
-      console.error(`[${timestamp}] [loadRemoteRepos] 加载仓库列表失败:`, error);
-    }
-  };
-
-  // 监听选中仓库变化，自动加载分支
-  useEffect(() => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [useEffect] 选中仓库变化，开始加载分支`);
-    
-    if (selectedRemoteRepos.length === 0) {
-      setRemoteRepoBranches({});
-      return;
-    }
-
-    setLoadingRemoteRepos(true);
-    
-    const loadBranchesForRepos = async () => {
-      try {
-        const newBranches = {};
-        
-        for (const repoId of selectedRemoteRepos) {
-          let cachedBranches = null;
-          setRemoteRepoBranches(prev => {
-            if (prev[repoId]) {
-              cachedBranches = prev[repoId];
-            }
-            return prev;
-          });
-          
-          if (cachedBranches) {
-            newBranches[repoId] = cachedBranches;
-            continue;
-          }
-
-          console.log(`[${timestamp}] [loadBranchesForRepos] 加载仓库 ${repoId} 的分支...`);
-          
-          const repo = remoteRepos.find(r => r.id === repoId);
-          if (!repo) {
-            console.warn(`[${timestamp}] [loadBranchesForRepos] 未找到仓库 ${repoId}`);
-            continue;
-          }
-
-          const cloneResult = await window.electronAPI.remoteRepos.clone({ 
-            repoId, 
-            url: repo.url 
-          });
-          
-          if (!cloneResult.success) {
-            console.error(`[${timestamp}] [loadBranchesForRepos] Clone 失败: ${cloneResult.error}`);
-            message.error(`Clone 仓库 ${repo.name} 失败: ${cloneResult.error}`);
-            continue;
-          }
-
-          const branches = await window.electronAPI.remoteRepos.getBranches({ 
-            repoPath: cloneResult.repoPath 
-          });
-          
-          console.log(`[${timestamp}] [loadBranchesForRepos] 获取到 ${branches?.length || 0} 个分支`);
-          newBranches[repoId] = branches || [];
-        }
-        
-        setRemoteRepoBranches(prev => ({ ...prev, ...newBranches }));
-        console.log(`[${timestamp}] [loadBranchesForRepos] 分支加载完成`);
-      } catch (error) {
-        console.error(`[${timestamp}] [loadBranchesForRepos] 加载分支失败:`, error);
-        message.error('加载外部仓库分支失败');
-      } finally {
-        setLoadingRemoteRepos(false);
-      }
-    };
-
-    loadBranchesForRepos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRemoteRepos]);
-
   const loadCurrentBranch = async () => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [loadCurrentBranch] 开始获取当前分支`);
@@ -443,10 +357,10 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     }
   };
 
-  const loadCommits = async (branch, isInitial = true) => {
+  const loadCommits = async (branch, isInitial = true, showRefreshing = true) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [loadCommits] 开始加载提交记录`);
-    console.log(`[${timestamp}] [loadCommits] 参数: branch="${branch}", isInitial=${isInitial}`);
+    console.log(`[${timestamp}] [loadCommits] 参数: branch="${branch}", isInitial=${isInitial}, showRefreshing=${showRefreshing}`);
     
     if (!branch) {
       console.warn(`[${timestamp}] [loadCommits] 警告: 分支为空，跳过加载`);
@@ -455,7 +369,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     }
     
     if (isInitial) {
-      setLoading(true);
+      if (showRefreshing) setRefreshing(true);
       setSkipCount(0);
       setHasMoreCommits(true);
     } else {
@@ -497,7 +411,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
       console.error(`[${timestamp}] [loadCommits] 加载提交历史失败:`, error);
       message.error('加载提交历史失败: ' + error.message);
     } finally {
-      setLoading(false);
+      if (showRefreshing) setRefreshing(false);
       setLoadingMore(false);
       console.log(`[${timestamp}] [loadCommits] 加载完成`);
     }
@@ -535,149 +449,47 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     return () => clearTimeout(searchDebouncerRef.current);
   }, [searchText, viewBranch]);
 
-  const handlePullConflict = async (conflictedFiles, branch) => {
-    // 多语言文件自动合并检测（复用遴选的自动合并逻辑）
-    if (isMultiLanguageConflict(conflictedFiles)) {
-      message.info('检测到多语言文件冲突，正在尝试自动合并');
-      const autoResult = await handleAutoMergeLanguageFiles(branch, null, conflictedFiles);
-      if (autoResult === 'auto-success') {
-        const continueResult = await window.electronAPI.git.mergeContinue();
-        if (continueResult.success) {
-          return;
-        }
-        message.warning('自动合并后继续失败，切换到手动处理');
-      } else {
-        message.warning('多语言自动合并失败，切换到手动处理');
-      }
-    }
-
-    // 显示冲突解决 modal，等待用户操作（复用遴选的冲突解决 UI）
-    const userAction = await new Promise((resolve) => {
-      conflictResolveRef.current = resolve;
-      setConflictModal({
-        visible: true,
-        files: conflictedFiles.map(p => ({ path: p, resolved: false })),
-        branch: branch,
-        sha: '',
-        source: 'merge'
-      });
-    });
-
-    setConflictModal(prev => ({ ...prev, visible: false }));
-
-    if (userAction === 'confirm') {
-      const continueResult = await window.electronAPI.git.mergeContinue();
-      if (!continueResult.success) {
-        message.error('解决冲突后继续合并失败: ' + continueResult.error);
-        await window.electronAPI.git.mergeAbort();
-      }
-    } else {
-      // 用户取消 → 放弃 merge
-      await window.electronAPI.git.mergeAbort();
-      message.info('已放弃合并，远程更新未应用');
-    }
-  };
-
-  const handleRefresh = async () => {
+  // 刷新本地提交记录内容：仅重载当前查看分支的本地提交列表，不触碰仓库状态
+  // 本地刷新速度很快，不弹 Modal loading，避免弹窗一闪而过影响体验
+  const handleRefreshLocal = async () => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
-    setLoading(true);
     setSearchText('');
     setShowMyCommits(false);
     setAllCommits([]);
     allCommitsLoadedRef.current = false;
-    // 先从远程 fetch 最新提交
     try {
-      await window.electronAPI.git.fetch();
+      await loadCommits(viewBranch, true, false);
     } catch (e) {
-      console.warn('[handleRefresh] fetch 失败:', e.message);
-    }
-
-    const branch = viewBranch;
-    if (!branch) {
-      message.warning('当前无分支，无法拉取远程更新');
-      setLoading(false);
-      isRefreshingRef.current = false;
-      return;
-    }
-    let stashed = false;
-
-    try {
-      // 工作区有未提交改动 → 先 stash
-      const hasChanges = await window.electronAPI.git.hasUncommittedChanges();
-      if (hasChanges) {
-        await window.electronAPI.git.stashCreate('refresh-pull');
-        stashed = true;
-      }
-
-      // 目标分支不是当前分支 → 切换过去
-      if (branch !== currentBranch) {
-        await window.electronAPI.git.checkout(branch);
-      }
-
-      // 步骤1：拉取远程分支引用并判断远程是否存在
-      const fetchResult = await window.electronAPI.git.fetchBranch(branch);
-      if (!fetchResult.remoteExists) {
-        message.info(`远程分支 origin/${branch} 不存在，仅刷新本地记录`);
-        return;
-      }
-
-      // 步骤2：检查远程是否有新提交未拉取（behind）
-      const behindResult = await window.electronAPI.git.checkBehind(branch);
-      if (!behindResult.behind) {
-        message.info('远程分支无新提交，已是最新');
-        return;
-      }
-
-      // 步骤3：检查本地是否有未推送提交（ahead）
-      const aheadResult = await window.electronAPI.git.checkHasNewCommits(branch);
-
-      let pullStatus;
-      if (!aheadResult.hasNewCommits) {
-        // 本地无未推送 → 直接 pull（fast-forward）
-        pullStatus = await window.electronAPI.git.pull(branch);
-      } else {
-        // 本地有未推送 + 远程有新提交 → 询问选择
-        const choice = await showPullChoiceDialog(branch, aheadResult.count, behindResult.count);
-        if (choice === 'cancel') {
-          message.info('已取消拉取');
-          return;
-        }
-        if (choice === 'reset') {
-          await window.electronAPI.git.forceSyncBranch(branch);
-          message.success(`已用远程分支 origin/${branch} 覆盖本地`);
-          return;
-        }
-        // choice === 'pull'
-        pullStatus = await window.electronAPI.git.pull(branch);
-      }
-
-      // 处理 pull 结果
-      if (pullStatus.status === 'conflict') {
-        await handlePullConflict(pullStatus.conflictedFiles || [], branch);
-      } else if (pullStatus.status === 'error') {
-        message.error('拉取失败: ' + pullStatus.error);
-      } else {
-        message.success('已拉取并合并远程最新提交');
-      }
-    } catch (error) {
-      message.error('拉取远程更新失败: ' + error.message);
+      console.error('[handleRefreshLocal] 刷新本地提交记录失败:', e);
     } finally {
+      isRefreshingRef.current = false;
+    }
+  };
+
+  // 刷新远程提交记录：同步远程引用后重载分支与提交列表，不修改本地分支/工作区
+  const handleRefreshRemote = async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setRefreshMode('remote');
+    setRefreshing(true);
+    setSearchText('');
+    setShowMyCommits(false);
+    setAllCommits([]);
+    allCommitsLoadedRef.current = false;
+    try {
       try {
-        await loadBranches();
-        await loadCurrentBranch();
-        if (viewBranch) await loadCommits(viewBranch, true);
+        await window.electronAPI.git.fetch();
       } catch (e) {
-        console.error('刷新显示失败:', e);
+        console.warn('[handleRefreshRemote] fetch 失败:', e.message);
+        message.warning('远程同步失败: ' + e.message);
       }
-      if (stashed) {
-        try {
-          await window.electronAPI.git.stashPop();
-        } catch (e) {
-          message.warning('恢复暂存改动失败，请手动执行 git stash pop');
-        }
-      }
-      setLoading(false);
+      await loadBranches();
+      await loadCommits(viewBranch, true, false);
+    } catch (e) {
+      console.error('[handleRefreshRemote] 刷新远程提交记录失败:', e);
+    } finally {
+      setRefreshing(false);
       isRefreshingRef.current = false;
     }
   };
@@ -703,39 +515,9 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     setSettings,
   });
 
-  // 跨仓库遴选推送
-  const handleRemoteCherryPick = useRemoteCherryPick({
-    selectedCommits,
-    selectedRemoteRepos,
-    remoteRepoBranches,
-    selectedRemoteBranches,
-    remoteRepos,
-    sourceProjectPath: project?.path,
-    setLoading,
-    setCherryPickProgress,
-    setCherryPickResultModal,
-  });
-
-  // 整合遴选推送：根据选择情况分叉执行
-  const handleCombinedCherryPickAndPush = async () => {
-    const hasLocalTargets = selectedTargetBranches.length > 0;
-    const hasRemoteTargets = selectedRemoteRepos.length > 0 &&
-      selectedRemoteRepos.some(id => (selectedRemoteBranches[id] || []).length > 0);
-
-    if (hasLocalTargets) {
-      await handleCherryPickAndPush();
-    }
-    if (hasRemoteTargets) {
-      const remoteResult = await handleRemoteCherryPick();
-      if (remoteResult?.hasRemoteWork && remoteResult.results) {
-        setCherryPickResultModal(prev => ({
-          ...prev,
-          visible: true,
-          success: (prev.results || []).every(r => r.success) && remoteResult.results.every(r => r.success),
-          results: [...(prev.results || []), ...remoteResult.results]
-        }));
-      }
-    }
+  // 跨仓库功能占位：逻辑待补
+  const handleCrossRepoPlaceholder = () => {
+    message.info('跨仓库功能开发中，敬请期待');
   };
 
   // 创建合并分支操作（抽取到 hook）
@@ -758,23 +540,13 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     loadCurrentBranch,
     loadBranches,
     setSettings,
-    selectedRemoteRepos,
-    selectedRemoteBranches,
-    remoteRepos,
-    sourceProjectPath: project?.path,
   });
 
-  const { handleDetectConflicts, handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
+  const { handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
     selectedCommits,
     selectedTargetBranches,
     mergeType,
-    currentBranch,
-    currentUser,
     findCommitByHash,
-    loadCurrentBranch,
-    setConflictDetecting,
-    setConflictProgress,
-    setConflictResultModal,
     setChangeDetecting,
     setChangeDetectProgress,
     setChangeDetectResultModal,
@@ -782,8 +554,6 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     setVersionDetectProgress,
     setVersionDetectResultModal,
   });
-
-  const isDetectConflictDisabled = selectedCommits.length === 0 || selectedTargetBranches.length === 0 || conflictDetecting;
 
   // 使用 useMemo 缓存过滤后的提交记录，依赖 debouncedSearchText（防抖后的搜索词）
   const filteredCommits = useMemo(() => {
@@ -873,48 +643,26 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           <Button icon={<GlobalOutlined />} onClick={handleOpenInBrowser}>
             浏览器打开
           </Button>
-          <Button icon={<SettingOutlined />} onClick={() => setSettingsVisible(true)}>
-            设置
+          <Button icon={<CloudServerOutlined />} onClick={() => setRepoManagerVisible(true)}>
+            仓库管理
           </Button>
         </Space>
       </Header>
 
       <Content className="workspace-content">
-        {/* 刷新加载浮层 */}
-        {loading && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.75)',
-            zIndex: 1000,
-            pointerEvents: 'none',
-          }}>
-            <div style={{ textAlign: 'center' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16, color: '#1890ff', fontSize: 21, fontWeight: 500 }}>
-                正在加载远程仓库分支提交内容...
-              </div>
-            </div>
-          </div>
-        )}
         <CommitListPanel
           searchText={searchText}
           setSearchText={setSearchText}
           showMyCommits={showMyCommits}
           setShowMyCommits={setShowMyCommits}
-          loading={loading}
+          loading={refreshing}
           loadingMore={loadingMore}
           hasMoreCommits={hasMoreCommits}
           filteredCommits={filteredCommits}
           selectedCommitsSet={selectedCommitsSet}
           toggleCommitSelection={toggleCommitSelection}
-          handleRefresh={handleRefresh}
+          handleRefreshLocal={handleRefreshLocal}
+          handleRefreshRemote={handleRefreshRemote}
           loadMoreCommits={loadMoreCommits}
           commitsListRef={commitsListRef}
           onClearSelection={handleClearSelection}
@@ -930,23 +678,14 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           branches={branches}
           settings={settings}
           loading={loading}
-          handleCherryPickAndPush={handleCombinedCherryPickAndPush}
+          handleCherryPickAndPush={handleCherryPickAndPush}
           handleCreateMergeBranch={handleCreateMergeBranch}
-          handleDetectConflicts={handleDetectConflicts}
           handleDetectChanges={handleDetectChanges}
           handleDetectVersion={handleDetectVersion}
-          conflictDetecting={conflictDetecting}
           changeDetecting={changeDetecting}
           versionDetecting={versionDetecting}
           selectedCommitsCount={selectedCommits.length}
-          isDetectConflictDisabled={isDetectConflictDisabled}
-          remoteRepos={remoteRepos}
-          selectedRemoteRepos={selectedRemoteRepos}
-          setSelectedRemoteRepos={setSelectedRemoteRepos}
-          remoteRepoBranches={remoteRepoBranches}
-          selectedRemoteBranches={selectedRemoteBranches}
-          setSelectedRemoteBranches={setSelectedRemoteBranches}
-          loadingRemoteRepos={loadingRemoteRepos}
+          handleCrossRepoPlaceholder={handleCrossRepoPlaceholder}
         />
       </Content>
 
@@ -976,15 +715,25 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
         />
       </Drawer>
 
+      {/* 仓库管理抽屉 */}
+      <Drawer
+        title="仓库管理"
+        placement="right"
+        width={600}
+        open={repoManagerVisible}
+        onClose={() => setRepoManagerVisible(false)}
+        rootStyle={{ top: 40 }}
+      >
+        <RemoteReposManager />
+      </Drawer>
 
       {/* 所有进度/结果 Modal */}
+      <RefreshLoadingModal visible={refreshing} mode={refreshMode} />
       <MergeProgressModal mergeProgress={mergeProgress} />
       <MergeResultModal mergeResultModal={mergeResultModal} setMergeResultModal={setMergeResultModal} selectedCommits={selectedCommits} findCommitByHash={findCommitByHash} />
       <ConflictResolveModal conflictModal={conflictModal} allFilesResolved={allFilesResolved} handleConflictConfirm={handleConflictConfirm} handleConflictCancel={handleConflictCancel} handleOpenFile={handleOpenFile} handleMarkResolved={handleMarkResolved} />
       <CherryPickProgressModal cherryPickProgress={cherryPickProgress} />
-      <CherryPickResultModal cherryPickResultModal={cherryPickResultModal} setCherryPickResultModal={setCherryPickResultModal} />
-      <ConflictProgressModal conflictProgress={conflictProgress} />
-      <ConflictResultModal conflictResultModal={conflictResultModal} setConflictResultModal={setConflictResultModal} />
+      <CherryPickResultModal cherryPickResultModal={cherryPickResultModal} setCherryPickResultModal={setCherryPickResultModal} projectName={project?.info?.name} />
       <ChangeDetectProgressModal changeDetectProgress={changeDetectProgress} />
       <ChangeDetectResultModal changeDetectResultModal={changeDetectResultModal} setChangeDetectResultModal={setChangeDetectResultModal} />
       <VersionDetectProgressModal versionDetectProgress={versionDetectProgress} />

@@ -8,10 +8,11 @@ import { formatCommitDate } from '../utils/mergeUtils';
 
 // 合并类型配置
 export const MERGE_TYPES = [
-  { value: 'bug', label: 'Bug提测' },
-  { value: 'test', label: '提测' },
+  { value: 'bug', label: 'bugfix' },
+  { value: 'test', label: '需求提测' },
   { value: 'release', label: '入库' },
-  { value: 'custom', label: '指定分支合并' }
+  { value: 'custom', label: '指定分支合并' },
+  { value: 'crossRepo', label: '跨仓库合并' }
 ];
 
 // 优化版提交项 - 使用 memo 避免直接导致重新渲染

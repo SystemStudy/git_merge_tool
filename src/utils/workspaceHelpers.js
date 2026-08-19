@@ -324,14 +324,14 @@ export const generateBranchName = (targetBranch, issueNumber, username) => {
 };
 
 // 根据合并类型获取操作按钮
-export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch }) => {
+export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch, handleCrossRepoPlaceholder }) => {
   const buttons = [];
-  
+
   if (mergeType === 'bug' || mergeType === 'test') {
     buttons.push(
-      <Button 
+      <Button
         key="cherry-pick-push"
-        type="primary" 
+        type="primary"
         icon={<CodeOutlined />}
         onClick={handleCherryPickAndPush}
         loading={loading}
@@ -375,7 +375,32 @@ export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, 
         创建合并分支
       </Button>
     );
+  } else if (mergeType === 'crossRepo') {
+    // 跨仓库遴选 / 创建合并分支逻辑待补，暂以占位按钮呈现
+    buttons.push(
+      <Button
+        key="cherry-pick-push"
+        type="primary"
+        icon={<CodeOutlined />}
+        onClick={handleCrossRepoPlaceholder}
+        loading={loading}
+      >
+        遴选推送
+      </Button>
+    );
+    buttons.push(
+      <Button
+        key="create-branch"
+        type="primary"
+        icon={<BranchesOutlined />}
+        onClick={handleCrossRepoPlaceholder}
+        loading={loading}
+        style={{ marginLeft: 8 }}
+      >
+        创建合并分支
+      </Button>
+    );
   }
-  
+
   return buttons;
 };

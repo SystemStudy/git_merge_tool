@@ -31,7 +31,8 @@ const CommitListPanel = ({
   filteredCommits,
   selectedCommitsSet,
   toggleCommitSelection,
-  handleRefresh,
+  handleRefreshLocal,
+  handleRefreshRemote,
   loadMoreCommits,
   commitsListRef,
   onClearSelection,
@@ -77,9 +78,15 @@ const CommitListPanel = ({
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={handleRefresh}
+            onClick={handleRefreshLocal}
           >
-            刷新
+            刷新本地提交记录内容
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={handleRefreshRemote}
+          >
+            刷新远程提交记录
           </Button>
         </Space>
       </div>
