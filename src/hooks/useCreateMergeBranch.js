@@ -13,6 +13,8 @@ import {
   generateBranchName,
   ensureAuthorEmailCompliance,
 } from '../utils/workspaceHelpers';
+import { showVersionJsonDialog } from '../components/VersionJsonModal';
+import { applyVersionJsonAndSquash } from '../utils/versionJsonHelpers';
 
 /**
  * 创建合并分支处理函数
@@ -88,6 +90,20 @@ export const useCreateMergeBranch = ({
       setLoading(false);
       message.info('操作已取消');
       return;
+    }
+
+    // 目标分支中存在非 develop 分支时，询问用户是否补充 version.json 内容
+    // 用户点"不需要"（返回 null）则按原有逻辑继续，不写入 version.json
+    const nonDevelopBranches = effectiveBranches.filter(b => b !== 'develop');
+    let versionJsonData = null;
+    if (nonDevelopBranches.length > 0) {
+      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 存在非 develop 目标分支: ${nonDevelopBranches.join(', ')}，弹窗询问 version.json`);
+      versionJsonData = await showVersionJsonDialog(selectedCommitsData);
+      if (versionJsonData) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户已填写 version.json 信息: issue=${versionJsonData.issue}, modules=${versionJsonData.modules.join('/')}`);
+      } else {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户选择不补充 version.json`);
+      }
     }
 
     // 检查是否有未提交的更改，如果有则自动 stash
@@ -288,6 +304,17 @@ export const useCreateMergeBranch = ({
           targetVersion,
           beforePickSha,
           onBranchSuccess: async () => {
+            // 写入 version.json（仅非 develop 分支，且用户已填写内容），并合并进最后一个遴选提交
+            // 此时仍处于合并分支上、尚未 push，失败不阻断主流程
+            if (versionJsonData && targetBranch !== 'develop') {
+              await applyVersionJsonAndSquash({
+                versionJsonData,
+                branchName: actualBranchName,
+                beforePickSha,
+                setProgress: (status) => setMergeProgress(prev => ({ ...prev, status }))
+              });
+            }
+
             // 有实际合并内容，保存分支信息用于后续推送和创建MR
             branchInfos.push({
               targetBranch,

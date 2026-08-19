@@ -14,6 +14,7 @@ const registerGitVersionHandlers = require('./ipc-handlers/ipc-git-version');
 const registerGitLabHandlers = require('./ipc-handlers/ipc-gitlab');
 const registerSystemHandlers = require('./ipc-handlers/ipc-system');
 const registerRemoteRepoHandlers = require('./ipc-handlers/ipc-remote-repos');
+const registerVersionJsonHandlers = require('./ipc-handlers/ipc-version-json');
 
 initLogger();
 
@@ -329,6 +330,7 @@ function setupIpcHandlers() {
     openProject
   });
   registerRemoteRepoHandlers(ipcMain, { getGit });
+  registerVersionJsonHandlers(ipcMain, { getGit, getProjectPath });
 }
 
 // 应用生命周期

@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     testConnection: (params) => ipcRenderer.invoke('remote-repos:test-connection', params)
   },
 
+  // version.json 维护（入库合并到非 develop 分支时追加 relations 记录）
+  versionJson: {
+    appendRelation: (params) => ipcRenderer.invoke('version-json:append-relation', params)
+  },
+
   // 系统操作
   system: {
     openExternal: (url) => ipcRenderer.invoke('open-external', url),

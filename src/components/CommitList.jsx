@@ -7,12 +7,13 @@ import { Checkbox, Tooltip } from 'antd';
 import { formatCommitDate } from '../utils/mergeUtils';
 
 // 合并类型配置
+// hidden: true 的类型不在页签中展示，但相关逻辑保留，后续开放时去掉该标记即可
 export const MERGE_TYPES = [
   { value: 'bug', label: 'bugfix' },
   { value: 'test', label: '需求提测' },
   { value: 'release', label: '入库' },
   { value: 'custom', label: '指定分支合并' },
-  { value: 'crossRepo', label: '跨仓库合并' }
+  { value: 'crossRepo', label: '跨仓库合并', hidden: true }
 ];
 
 // 优化版提交项 - 使用 memo 避免直接导致重新渲染

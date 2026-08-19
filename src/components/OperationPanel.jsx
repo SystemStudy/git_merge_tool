@@ -57,7 +57,7 @@ const OperationPanel = ({
             }}
             className="merge-type-radio-group"
           >
-            {MERGE_TYPES.map(type => (
+            {MERGE_TYPES.filter(type => !type.hidden).map(type => (
               <Radio.Button key={type.value} value={type.value}>
                 {type.label}
               </Radio.Button>
