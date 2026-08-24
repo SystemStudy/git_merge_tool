@@ -29,6 +29,8 @@ import {
   ConflictResolveModal,
   CherryPickProgressModal,
   CherryPickResultModal,
+  ConflictProgressModal,
+  ConflictResultModal,
   ChangeDetectProgressModal,
   ChangeDetectResultModal,
   VersionDetectProgressModal,
@@ -99,6 +101,9 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   const [mergeResultModal, setMergeResultModal] = useState({ visible: false, success: false, results: [] });
   const [cherryPickProgress, setCherryPickProgress] = useState({ visible: false, current: 0, total: 0, status: '', results: [] });
   const [cherryPickResultModal, setCherryPickResultModal] = useState({ visible: false, success: false, results: [] });
+  const [conflictDetecting, setConflictDetecting] = useState(false);
+  const [conflictProgress, setConflictProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
+  const [conflictResultModal, setConflictResultModal] = useState({ visible: false, results: [] });
   const [changeDetecting, setChangeDetecting] = useState(false);
   const [changeDetectProgress, setChangeDetectProgress] = useState({ visible: false, current: 0, total: 0, status: '' });
   const [changeDetectResultModal, setChangeDetectResultModal] = useState({ visible: false, results: [], isSingleCommit: false, allExist: true, missingBySubject: {}, commitSubjects: [] });
@@ -521,7 +526,7 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
   };
 
   // 创建合并分支操作（抽取到 hook）
-  const handleCreateMergeBranch = useCreateMergeBranch({
+  const createMergeBranchFn = useCreateMergeBranch({
     selectedCommits,
     selectedTargetBranches,
     mergeType,
@@ -542,11 +547,22 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     setSettings,
   });
 
-  const { handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
+  // 普通创建合并分支：不再弹窗填写 version.json
+  const handleCreateMergeBranch = () => createMergeBranchFn(false);
+  // 追加 version 的创建合并分支：弹窗填写 version.json 后再执行合并
+  const handleCreateMergeBranchAppendVersion = () => createMergeBranchFn(true);
+
+  const { handleDetectConflicts, handleDetectChanges, handleDetectVersion, handleOpenInBrowser } = useDetectOperations({
     selectedCommits,
     selectedTargetBranches,
     mergeType,
+    currentBranch,
+    currentUser,
     findCommitByHash,
+    loadCurrentBranch,
+    setConflictDetecting,
+    setConflictProgress,
+    setConflictResultModal,
     setChangeDetecting,
     setChangeDetectProgress,
     setChangeDetectResultModal,
@@ -554,6 +570,8 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
     setVersionDetectProgress,
     setVersionDetectResultModal,
   });
+
+  const isDetectConflictDisabled = selectedCommits.length === 0 || selectedTargetBranches.length === 0 || conflictDetecting;
 
   // 使用 useMemo 缓存过滤后的提交记录，依赖 debouncedSearchText（防抖后的搜索词）
   const filteredCommits = useMemo(() => {
@@ -680,11 +698,15 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
           loading={loading}
           handleCherryPickAndPush={handleCherryPickAndPush}
           handleCreateMergeBranch={handleCreateMergeBranch}
+          handleCreateMergeBranchAppendVersion={handleCreateMergeBranchAppendVersion}
+          handleDetectConflicts={handleDetectConflicts}
           handleDetectChanges={handleDetectChanges}
           handleDetectVersion={handleDetectVersion}
+          conflictDetecting={conflictDetecting}
           changeDetecting={changeDetecting}
           versionDetecting={versionDetecting}
           selectedCommitsCount={selectedCommits.length}
+          isDetectConflictDisabled={isDetectConflictDisabled}
           handleCrossRepoPlaceholder={handleCrossRepoPlaceholder}
         />
       </Content>
@@ -734,6 +756,8 @@ const MainWorkspace = ({ project, onClose, onThemeColorChange }) => {
       <ConflictResolveModal conflictModal={conflictModal} allFilesResolved={allFilesResolved} handleConflictConfirm={handleConflictConfirm} handleConflictCancel={handleConflictCancel} handleOpenFile={handleOpenFile} handleMarkResolved={handleMarkResolved} />
       <CherryPickProgressModal cherryPickProgress={cherryPickProgress} />
       <CherryPickResultModal cherryPickResultModal={cherryPickResultModal} setCherryPickResultModal={setCherryPickResultModal} projectName={project?.info?.name} />
+      <ConflictProgressModal conflictProgress={conflictProgress} />
+      <ConflictResultModal conflictResultModal={conflictResultModal} setConflictResultModal={setConflictResultModal} />
       <ChangeDetectProgressModal changeDetectProgress={changeDetectProgress} />
       <ChangeDetectResultModal changeDetectResultModal={changeDetectResultModal} setChangeDetectResultModal={setChangeDetectResultModal} />
       <VersionDetectProgressModal versionDetectProgress={versionDetectProgress} />

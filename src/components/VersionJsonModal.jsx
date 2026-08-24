@@ -1,12 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Input, Divider, message } from 'antd';
-import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
+import { PlusOutlined, MinusOutlined, CloseOutlined } from '@ant-design/icons';
 import { extractIssueAndDesc } from '../utils/versionJsonHelpers';
 
 const LABEL_STYLE = { width: 96, flexShrink: 0, textAlign: 'right', paddingRight: 12 };
 const ROW_STYLE = { display: 'flex', alignItems: 'center', marginBottom: 12 };
 // 加号仅在最后一行显示，其余行用等宽占位撑开，保证各行输入框宽度一致
 const ICON_PLACEHOLDER_STYLE = { display: 'inline-block', width: 40, flexShrink: 0 };
+
+// 常用模块标签的浅色系配色（背景 + 文字 + 边框），按模块名哈希取色，
+// 同一模块名每次打开弹窗颜色保持一致，不同模块名之间颜色随机分布
+const TAG_COLORS = [
+  { bg: '#E6F4FF', fg: '#0958D9', border: '#91CAFF' },
+  { bg: '#F6FFED', fg: '#389E0D', border: '#B7EB8F' },
+  { bg: '#FFF7E6', fg: '#D46B08', border: '#FFD591' },
+  { bg: '#FFF0F6', fg: '#C41D7F', border: '#FFADD2' },
+  { bg: '#F9F0FF', fg: '#531DAB', border: '#D3ADF7' },
+  { bg: '#E6FFFB', fg: '#08979C', border: '#87E8DE' },
+  { bg: '#FCFFE6', fg: '#7CB305', border: '#EAFF8F' },
+  { bg: '#FFF1F0', fg: '#CF1322', border: '#FFA39E' },
+];
+
+// 模块名 -> 配色：字符串哈希后对配色表取模
+const getTagColor = (name) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return TAG_COLORS[hash % TAG_COLORS.length];
+};
 
 /**
  * version.json 信息补充表单（受控组件，由 showVersionJsonDialog 挂载到 Modal 内）
@@ -17,6 +39,21 @@ const VersionJsonForm = ({ defaultIssue, defaultDesc, onSkip, onConfirm }) => {
   const [modules, setModules] = useState(['']);
   const [issueError, setIssueError] = useState(false);
   const [moduleError, setModuleError] = useState(false);
+  const [commonModules, setCommonModules] = useState([]);
+
+  // 加载历史输入过的常用模块（独立文件存储，与应用设置分开）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await window.electronAPI.versionJson.getCommonModules();
+        if (!cancelled) setCommonModules(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.warn('[VersionJsonForm] 加载常用模块失败:', error.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleModuleChange = (index, value) => {
     setModules(prev => prev.map((m, i) => (i === index ? value : m)));
@@ -30,6 +67,32 @@ const VersionJsonForm = ({ defaultIssue, defaultDesc, onSkip, onConfirm }) => {
   const handleRemoveModule = (index) => {
     setModules(prev => prev.filter((_, i) => i !== index));
     if (moduleError) setModuleError(false);
+  };
+
+  // 点击常用模块：已填入则忽略；优先填进第一个空行，没有空行则新增一行
+  const handlePickCommonModule = useCallback((name) => {
+    setModules(prev => {
+      if (prev.some(m => m.trim() === name)) {
+        message.info(`模块 ${name} 已添加`);
+        return prev;
+      }
+      const emptyIndex = prev.findIndex(m => !m.trim());
+      if (emptyIndex === -1) return [...prev, name];
+      return prev.map((m, i) => (i === emptyIndex ? name : m));
+    });
+    if (moduleError) setModuleError(false);
+  }, [moduleError]);
+
+  // 删除常用模块（只影响历史记录，不影响当前已填入的输入框）
+  const handleDeleteCommonModule = async (name, event) => {
+    event.stopPropagation();
+    try {
+      const list = await window.electronAPI.versionJson.removeCommonModule(name);
+      setCommonModules(Array.isArray(list) ? list : []);
+    } catch (error) {
+      console.error('[VersionJsonForm] 删除常用模块失败:', error.message);
+      message.error('删除常用模块失败: ' + error.message);
+    }
   };
 
   const handleConfirm = () => {
@@ -54,6 +117,11 @@ const VersionJsonForm = ({ defaultIssue, defaultDesc, onSkip, onConfirm }) => {
       message.error('请至少输入一个模块名');
       return;
     }
+
+    // 本次输入的模块名沉淀为常用模块，失败不阻断主流程
+    window.electronAPI.versionJson.addCommonModules(validModules).catch((error) => {
+      console.warn('[VersionJsonForm] 保存常用模块失败:', error.message);
+    });
 
     onConfirm({ issue: trimmedIssue, desc: desc.trim(), modules: validModules });
   };
@@ -120,6 +188,46 @@ const VersionJsonForm = ({ defaultIssue, defaultDesc, onSkip, onConfirm }) => {
           )}
         </div>
       ))}
+
+      {/* 常用模块：历史输入过的模块名，点击填入输入框，叉号从历史记录中删除 */}
+      {commonModules.length > 0 && (
+        <div style={{ display: 'flex', marginTop: 16 }}>
+          <span style={{ ...LABEL_STYLE, paddingTop: 4 }}>常用模块</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+            {commonModules.map((name) => {
+              const color = getTagColor(name);
+              return (
+                <span
+                  key={name}
+                  onClick={() => handlePickCommonModule(name)}
+                  title={`点击填入模块 ${name}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '3px 8px 3px 10px',
+                    borderRadius: 12,
+                    fontSize: 13,
+                    lineHeight: '20px',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    background: color.bg,
+                    color: color.fg,
+                    border: `1px solid ${color.border}`,
+                  }}
+                >
+                  {name}
+                  <CloseOutlined
+                    onClick={(e) => handleDeleteCommonModule(name, e)}
+                    title="从常用模块中删除"
+                    style={{ fontSize: 10, opacity: 0.65, cursor: 'pointer' }}
+                  />
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
         <Button onClick={onSkip}>不需要</Button>

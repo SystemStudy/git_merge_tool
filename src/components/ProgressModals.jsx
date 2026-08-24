@@ -421,6 +421,77 @@ export function RefreshLoadingModal({ visible, mode = 'remote' }) {
  * CherryPick 结果 Modal
  */
 export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResultModal, projectName }) {
+  const [activeTab, setActiveTab] = React.useState('result');
+
+  const results = cherryPickResultModal.results || [];
+  const failedResults = results.filter(r => !r.success);
+
+  // 每次打开弹窗时回到「推送结果」页签
+  React.useEffect(() => {
+    if (cherryPickResultModal.visible) {
+      setActiveTab('result');
+    }
+  }, [cherryPickResultModal.visible]);
+
+  // 明细表：只展示分支与成功/失败，失败原因收敛到独立页签
+  const resultColumns = [
+    {
+      title: '目标分支',
+      dataIndex: 'targetBranch',
+      key: 'targetBranch',
+      ellipsis: true,
+    },
+    {
+      title: '推送结果',
+      dataIndex: 'success',
+      key: 'success',
+      width: 110,
+      align: 'center',
+      render: (success) => (
+        <Tag color={success ? 'green' : 'red'}>{success ? '成功' : '失败'}</Tag>
+      ),
+    },
+  ];
+
+  const failedColumns = [
+    {
+      title: '目标分支',
+      dataIndex: 'targetBranch',
+      key: 'targetBranch',
+      width: 180,
+      ellipsis: true,
+    },
+    {
+      title: '失败原因',
+      dataIndex: 'error',
+      key: 'error',
+      render: (error) => (
+        <span style={{ color: '#cf1322', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {error || '未知错误'}
+        </span>
+      ),
+    },
+  ];
+
+  const resultContent = (
+    <div>
+      <Alert
+        message={cherryPickResultModal.success ? '全部推送成功' : '部分推送失败'}
+        description={`共处理 ${results.length} 个目标分支，成功 ${results.length - failedResults.length} 个，失败 ${failedResults.length} 个`}
+        type={cherryPickResultModal.success ? 'success' : 'warning'}
+        showIcon
+        style={{ marginBottom: 12 }}
+      />
+      <Table
+        size="small"
+        rowKey={(record, index) => `${record.targetBranch}-${index}`}
+        columns={resultColumns}
+        dataSource={results}
+        pagination={false}
+      />
+    </div>
+  );
+
   return (
     <Modal
       title="遴选推送结果"
@@ -433,7 +504,7 @@ export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResu
           onClick={() => {
             const formatResults = () => {
               // 只复制推送成功的结果，过滤掉失败的分支
-              const successResults = cherryPickResultModal.results.filter(r => r.success);
+              const successResults = results.filter(r => r.success);
               if (successResults.length === 0) {
                 return '无成功的推送';
               }
@@ -465,49 +536,129 @@ export function CherryPickResultModal({ cherryPickResultModal, setCherryPickResu
           关闭
         </Button>
       ]}
-      width={600}
+      width={700}
       className="merge-result-modal"
+      centered
+      styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
+    >
+      <div style={{ padding: '10px 0' }}>
+        {failedResults.length === 0 ? (
+          resultContent
+        ) : (
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                key: 'result',
+                label: `推送结果 (${results.length})`,
+                children: resultContent,
+              },
+              {
+                key: 'failed',
+                label: `失败详情 (${failedResults.length})`,
+                children: (
+                  <Table
+                    size="small"
+                    rowKey={(record, index) => `${record.targetBranch}-fail-${index}`}
+                    columns={failedColumns}
+                    dataSource={failedResults}
+                    pagination={false}
+                  />
+                ),
+              },
+            ]}
+          />
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * 冲突检测进度 Modal
+ */
+export function ConflictProgressModal({ conflictProgress }) {
+  return (
+    <Modal
+      title="检测冲突"
+      open={conflictProgress.visible}
+      onCancel={() => {}}
+      footer={null}
+      closable={false}
+      maskClosable={false}
+      width={500}
+    >
+      <div style={{ padding: '20px 0', position: 'relative' }}>
+        <Progress
+          percent={conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}
+          status="active"
+          strokeWidth={22}
+          format={() => ''}
+        />
+        <span className="progress-percent-overlay">
+          {conflictProgress.total > 0 ? Math.round((conflictProgress.current / conflictProgress.total) * 100) : 0}%
+        </span>
+        <div style={{ marginTop: 8, color: '#666' }}>
+          {conflictProgress.status}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * 冲突检测结果 Modal
+ */
+export function ConflictResultModal({ conflictResultModal, setConflictResultModal }) {
+  return (
+    <Modal
+      title="冲突检测结果"
+      open={conflictResultModal.visible}
+      onCancel={() => setConflictResultModal({ visible: false, results: [] })}
+      footer={[
+        <Button
+          key="close"
+          type="primary"
+          onClick={() => setConflictResultModal({ visible: false, results: [] })}
+        >
+          关闭
+        </Button>
+      ]}
+      width={500}
     >
       <div style={{ padding: '10px 0' }}>
         <Alert
-          message={cherryPickResultModal.success ? '全部推送成功' : '部分推送失败'}
-          description={
-            <div>
-              <p style={{ marginBottom: '12px' }}>
-                共处理 {cherryPickResultModal.results.length} 个目标分支
-              </p>
-              {cherryPickResultModal.results.map((result, index) => (
-                <Card
-                  key={index}
-                  size="small"
-                  className={`merge-result-card ${result.success ? 'success' : 'error'}`}
-                  style={{ marginBottom: '12px' }}
-                >
-                  <div style={{ marginBottom: '8px' }}>
-                    <strong>目标分支:</strong> {result.targetBranch}
-                  </div>
-                  {result.success && (
-                    <div style={{ color: '#52c41a', marginBottom: '8px' }}>
-                      {'\u2713'} 推送成功
-                    </div>
-                  )}
-                  {result.error && (
-                    <div style={{ color: '#ff4d4f' }}>
-                      <strong>错误:</strong> {result.error}
-                    </div>
-                  )}
-                  <div style={{ marginTop: '8px' }}>
-                    <Tag color={result.success ? 'green' : 'red'}>
-                      {result.success ? '成功' : '失败'}
-                    </Tag>
-                  </div>
-                </Card>
-              ))}
-            </div>
+          message={
+            conflictResultModal.results.every(r => !r.hasConflict)
+              ? '所有分支均无冲突'
+              : '部分分支存在冲突'
           }
-          type={cherryPickResultModal.success ? 'success' : 'warning'}
+          type={
+            conflictResultModal.results.every(r => !r.hasConflict)
+              ? 'success'
+              : 'warning'
+          }
           showIcon
+          style={{ marginBottom: 16 }}
         />
+        {conflictResultModal.results.map((result, index) => (
+          <Card
+            key={index}
+            size="small"
+            style={{
+              marginBottom: 8,
+              borderLeft: `4px solid ${result.hasConflict ? '#ff4d4f' : '#52c41a'}`
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 500 }}>{result.targetBranch}</span>
+              <Tag color={result.hasConflict ? 'error' : 'success'}>
+                {result.hasConflict ? '有冲突' : '无冲突'}
+              </Tag>
+            </div>
+          </Card>
+        ))}
       </div>
     </Modal>
   );

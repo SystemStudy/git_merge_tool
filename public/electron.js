@@ -15,16 +15,17 @@ const registerGitLabHandlers = require('./ipc-handlers/ipc-gitlab');
 const registerSystemHandlers = require('./ipc-handlers/ipc-system');
 const registerRemoteRepoHandlers = require('./ipc-handlers/ipc-remote-repos');
 const registerVersionJsonHandlers = require('./ipc-handlers/ipc-version-json');
+const projectStore = require('./project-store');
 
 initLogger();
 
 // 初始化配置存储
+// 注意: recentProjects 已拆分到 git-merge-assistant-projects.json，此处不再声明其
+// defaults，避免迁移后被重新写回本文件；projectsRepos 为已废弃字段，同样不再声明
 const store = new Store({
   name: 'git-merge-assistant-config',
   defaults: {
-    recentProjects: [],
     remoteRepos: [],
-    projectsRepos: {},
     settings: {
       testBranches: 'smoke\nstable/sp4/smoke\nstable/sp3/smoke\nstable/sp2/smoke\nstable/sp1/smoke',
       releaseBranches: 'develop\nstable/sp4/develop\nstable/sp3/develop\nstable/sp2/develop\nstable/sp1/develop',
@@ -48,6 +49,17 @@ const store = new Store({
   if (claudeKeys.some(k => k in legacySettings)) {
     claudeKeys.forEach(k => delete legacySettings[k]);
     store.set('settings', legacySettings);
+  }
+}
+
+// 一次性迁移：把 recentProjects 拆分到 git-merge-assistant-projects.json。
+// 仅在新配置文件不存在、且旧配置中仍留有 recentProjects 时执行。
+{
+  const result = projectStore.migrateFromLegacyStore(store);
+  if (result.migrated) {
+    console.log(`[migration] 项目配置迁移成功: ${result.projectCount} 个项目`);
+  } else {
+    console.log(`[migration] 项目配置无需迁移: ${result.reason}`);
   }
 }
 
@@ -290,24 +302,9 @@ async function getProjectInfo(projectPath) {
   };
 }
 
-// 添加到最近项目列表
+// 添加到最近项目列表（存储在独立的 git-merge-assistant-projects.json 中）
 function addToRecentProjects(projectPath, projectName) {
-  let recentProjects = store.get('recentProjects') || [];
-  
-  // 移除已存在的相同路径
-  recentProjects = recentProjects.filter(p => p.path !== projectPath);
-  
-  // 添加到开头
-  recentProjects.unshift({
-    path: projectPath,
-    name: projectName,
-    lastOpened: new Date().toISOString()
-  });
-  
-  // 只保留最近10个
-  recentProjects = recentProjects.slice(0, 10);
-  
-  store.set('recentProjects', recentProjects);
+  projectStore.addRecentProject(projectPath, projectName);
 }
 
 // IPC通信处理（薄层：委托给各模块注册函数）
@@ -323,6 +320,7 @@ function setupIpcHandlers() {
   registerSystemHandlers(ipcMain, {
     mainWindow,
     store,
+    projectStore,
     globalConfigStore,
     globalConfigStatus,
     getProjectPath,

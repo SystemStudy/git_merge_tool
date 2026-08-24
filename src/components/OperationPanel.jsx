@@ -11,6 +11,7 @@ import {
   AutoComplete,
 } from 'antd';
 import {
+  WarningOutlined,
   SearchOutlined,
   TagOutlined,
   PlusOutlined,
@@ -34,11 +35,15 @@ const OperationPanel = ({
   loading,
   handleCherryPickAndPush,
   handleCreateMergeBranch,
+  handleCreateMergeBranchAppendVersion,
+  handleDetectConflicts,
   handleDetectChanges,
   handleDetectVersion,
+  conflictDetecting,
   changeDetecting,
   versionDetecting,
   selectedCommitsCount,
+  isDetectConflictDisabled,
   handleCrossRepoPlaceholder,
 }) => {
   return (
@@ -125,9 +130,19 @@ const OperationPanel = ({
         )}
 
         <div className="action-buttons">
-          {getActionButtons({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch, handleCrossRepoPlaceholder })}
+          {getActionButtons({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch, handleCreateMergeBranchAppendVersion, handleCrossRepoPlaceholder })}
           {mergeType !== 'crossRepo' && (
             <>
+              <Button
+                type="default"
+                icon={<WarningOutlined />}
+                onClick={handleDetectConflicts}
+                loading={conflictDetecting}
+                disabled={isDetectConflictDisabled}
+                style={{ marginLeft: 8 }}
+              >
+                检测冲突
+              </Button>
               <Button
                 type="default"
                 icon={<SearchOutlined />}

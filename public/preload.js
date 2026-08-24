@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pull: (branch) => ipcRenderer.invoke('git-pull', branch),
     forceSyncBranch: (branch) => ipcRenderer.invoke('git-force-sync-branch', branch),
     checkout: (branch) => ipcRenderer.invoke('git-checkout', branch),
+    cherryPick: (commitShas) => ipcRenderer.invoke('git-cherry-pick', commitShas),
     push: (branch) => ipcRenderer.invoke('git-push', branch),
     createBranch: (branchName, baseBranch) => ipcRenderer.invoke('git-create-branch', branchName, baseBranch),
     deleteLocalBranch: (branchName, force) => ipcRenderer.invoke('git-delete-local-branch', branchName, force),
@@ -83,7 +84,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // version.json 维护（入库合并到非 develop 分支时追加 relations 记录）
   versionJson: {
-    appendRelation: (params) => ipcRenderer.invoke('version-json:append-relation', params)
+    appendRelation: (params) => ipcRenderer.invoke('version-json:append-relation', params),
+    getCommonModules: () => ipcRenderer.invoke('version-json:get-common-modules'),
+    addCommonModules: (moduleNames) => ipcRenderer.invoke('version-json:add-common-modules', moduleNames),
+    removeCommonModule: (moduleName) => ipcRenderer.invoke('version-json:remove-common-module', moduleName)
   },
 
   // 系统操作

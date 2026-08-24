@@ -1,6 +1,6 @@
 {
   "name": "LandrayGitTool",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Git合并辅助工具 - Electron+React版本",
   "main": "public/electron.js",
   "homepage": ".",

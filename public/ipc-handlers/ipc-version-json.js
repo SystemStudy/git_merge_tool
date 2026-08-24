@@ -4,7 +4,25 @@
  */
 const path = require('path');
 const fs = require('fs');
+const Store = require('electron-store');
 const { formatTimestamp } = require('./utils');
+
+// 常用模块名独立存储（文件: git-merge-assistant-common-modules.json）
+// 刻意与全局配置 git-merge-assistant-config.json 分开，避免污染应用设置
+const commonModulesStore = new Store({
+  name: 'git-merge-assistant-common-modules',
+  defaults: { modules: [] }
+});
+
+// 常用模块最多保留条数，超出时丢弃最旧的
+const MAX_COMMON_MODULES = 50;
+
+// 读取常用模块列表（做一次去空 + 去重的防御性清洗）
+function readCommonModules() {
+  const raw = commonModulesStore.get('modules');
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter(m => typeof m === 'string' && m.trim()).map(m => m.trim()))];
+}
 
 // 去除 UTF-8 BOM
 function stripBom(text) {
@@ -78,6 +96,35 @@ function readModuleNameFromPackageJson(projectPath) {
 }
 
 module.exports = function registerVersionJsonHandlers(ipcMain, { getGit, getProjectPath }) {
+  // 读取常用模块列表
+  ipcMain.handle('version-json:get-common-modules', async () => {
+    return readCommonModules();
+  });
+
+  // 追加常用模块（已存在的原样保留，不重复写入；超出上限时丢弃最旧的）
+  ipcMain.handle('version-json:add-common-modules', async (event, moduleNames) => {
+    const timestamp = formatTimestamp();
+    const incoming = Array.isArray(moduleNames) ? moduleNames : [moduleNames];
+    const cleaned = incoming.filter(m => typeof m === 'string' && m.trim()).map(m => m.trim());
+
+    const merged = [...new Set([...readCommonModules(), ...cleaned])].slice(-MAX_COMMON_MODULES);
+    commonModulesStore.set('modules', merged);
+
+    console.log(`[${timestamp}] [version-json:add-common-modules] 已保存常用模块，当前共 ${merged.length} 个`);
+    return merged;
+  });
+
+  // 删除单个常用模块
+  ipcMain.handle('version-json:remove-common-module', async (event, moduleName) => {
+    const timestamp = formatTimestamp();
+    const target = typeof moduleName === 'string' ? moduleName.trim() : '';
+    const remained = readCommonModules().filter(m => m !== target);
+    commonModulesStore.set('modules', remained);
+
+    console.log(`[${timestamp}] [version-json:remove-common-module] 已删除常用模块: ${target}，剩余 ${remained.length} 个`);
+    return remained;
+  });
+
   /**
    * 在当前工作区（已 checkout 到合并分支）的根目录 version.json 中追加一条 relations 记录。
    * version.json 不存在时按默认模板新建（moduleId 取远程仓库名，moduleName 依次尝试

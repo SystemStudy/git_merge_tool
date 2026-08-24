@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Button, Input, message } from 'antd';
-import { CodeOutlined, BranchesOutlined } from '@ant-design/icons';
+import { CodeOutlined, BranchesOutlined, FileTextOutlined } from '@ant-design/icons';
 
 // 生成随机分支名后缀（a-z, 0-9）
 export const generateRandomBranchSuffix = (length = 8) => {
@@ -324,7 +324,7 @@ export const generateBranchName = (targetBranch, issueNumber, username) => {
 };
 
 // 根据合并类型获取操作按钮
-export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch, handleCrossRepoPlaceholder }) => {
+export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, handleCreateMergeBranch, handleCreateMergeBranchAppendVersion, handleCrossRepoPlaceholder }) => {
   const buttons = [];
 
   if (mergeType === 'bug' || mergeType === 'test') {
@@ -351,6 +351,18 @@ export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, 
         创建合并分支
       </Button>
     );
+    buttons.push(
+      <Button
+        key="create-branch-with-version"
+        type="primary"
+        icon={<FileTextOutlined />}
+        onClick={handleCreateMergeBranchAppendVersion}
+        loading={loading}
+        style={{ marginLeft: 8 }}
+      >
+        创建合并分支(追加version)
+      </Button>
+    );
   } else if (mergeType === 'custom') {
     buttons.push(
       <Button
@@ -373,6 +385,18 @@ export const getActionButtons = ({ mergeType, loading, handleCherryPickAndPush, 
         style={{ marginLeft: 8 }}
       >
         创建合并分支
+      </Button>
+    );
+    buttons.push(
+      <Button
+        key="create-branch-with-version"
+        type="primary"
+        icon={<FileTextOutlined />}
+        onClick={handleCreateMergeBranchAppendVersion}
+        loading={loading}
+        style={{ marginLeft: 8 }}
+      >
+        创建合并分支(追加version)
       </Button>
     );
   } else if (mergeType === 'crossRepo') {

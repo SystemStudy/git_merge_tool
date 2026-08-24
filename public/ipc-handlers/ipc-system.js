@@ -8,7 +8,7 @@ const archiver = require('archiver');
 const { exec } = require('child_process');
 const { formatTimestamp } = require('./utils');
 
-module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, globalConfigStore, globalConfigStatus, getProjectPath, getLogFilePath, openProject }) {
+module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, projectStore, globalConfigStore, globalConfigStatus, getProjectPath, getLogFilePath, openProject }) {
   // 窗口控制 — 最小化
   ipcMain.handle('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
@@ -35,16 +35,14 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, g
     return mainWindow ? mainWindow.isMaximized() : false;
   });
 
-  // 获取最近项目列表
+  // 获取最近项目列表（独立配置文件 git-merge-assistant-projects.json）
   ipcMain.handle('get-recent-projects', () => {
-    return store.get('recentProjects') || [];
+    return projectStore.getRecentProjects();
   });
 
   // 删除最近项目记录
   ipcMain.handle('remove-recent-project', (event, projectPath) => {
-    let recentProjects = store.get('recentProjects') || [];
-    recentProjects = recentProjects.filter(p => p.path !== projectPath);
-    store.set('recentProjects', recentProjects);
+    projectStore.removeRecentProject(projectPath);
     return { success: true };
   });
 

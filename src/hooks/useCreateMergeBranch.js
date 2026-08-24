@@ -41,7 +41,7 @@ export const useCreateMergeBranch = ({
   loadBranches,
   setSettings,
 }) => {
-  const handleCreateMergeBranch = async () => {
+  const handleCreateMergeBranch = async (withVersion = false) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [handleCreateMergeBranch] 开始创建合并分支`);
     console.log(`[${timestamp}] [handleCreateMergeBranch] 选中的提交: ${selectedCommits.length}个`);
@@ -92,18 +92,26 @@ export const useCreateMergeBranch = ({
       return;
     }
 
-    // 目标分支中存在非 develop 分支时，询问用户是否补充 version.json 内容
-    // 用户点"不需要"（返回 null）则按原有逻辑继续，不写入 version.json
+    // 仅"追加version"按钮（withVersion=true）才弹窗填写 version.json；普通"创建合并分支"不再弹窗
+    // 只选中 develop 分支时无需写入 version 文件，提示用户改用普通按钮
     const nonDevelopBranches = effectiveBranches.filter(b => b !== 'develop');
     let versionJsonData = null;
-    if (nonDevelopBranches.length > 0) {
-      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 存在非 develop 目标分支: ${nonDevelopBranches.join(', ')}，弹窗询问 version.json`);
-      versionJsonData = await showVersionJsonDialog(selectedCommitsData);
-      if (versionJsonData) {
-        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户已填写 version.json 信息: issue=${versionJsonData.issue}, modules=${versionJsonData.modules.join('/')}`);
-      } else {
-        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户选择不补充 version.json`);
+    if (withVersion) {
+      if (nonDevelopBranches.length === 0) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 仅选中 develop 分支，无需写入 version 文件`);
+        setLoading(false);
+        message.info('当前仅选中了 develop 分支，不需要写入 version 文件，请使用"创建合并分支"');
+        return;
       }
+      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 存在非 develop 目标分支: ${nonDevelopBranches.join(', ')}，弹窗填写 version.json`);
+      versionJsonData = await showVersionJsonDialog(selectedCommitsData);
+      if (!versionJsonData) {
+        console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户选择不补充 version.json，取消操作`);
+        setLoading(false);
+        message.info('已取消创建合并分支');
+        return;
+      }
+      console.log(`[${new Date().toISOString()}] [handleCreateMergeBranch] 用户已填写 version.json 信息: issue=${versionJsonData.issue}, modules=${versionJsonData.modules.join('/')}`);
     }
 
     // 检查是否有未提交的更改，如果有则自动 stash
