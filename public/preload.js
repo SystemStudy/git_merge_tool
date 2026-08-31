@@ -16,11 +16,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save: (settings) => ipcRenderer.invoke('save-settings', settings)
   },
 
-  // 服务端下发的全局配置（独立于本地设置）
-  globalConfig: {
-    get: () => ipcRenderer.invoke('get-global-config')
-  },
-
   // Git操作
   git: {
     getBranches: () => ipcRenderer.invoke('git-get-branches'),
@@ -90,6 +85,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeCommonModule: (moduleName) => ipcRenderer.invoke('version-json:remove-common-module', moduleName)
   },
 
+  // 应用自动更新（检查 / 下载 / 安装）
+  update: {
+    check: () => ipcRenderer.invoke('app:check-update'),
+    download: () => ipcRenderer.invoke('app:download-update'),
+    cancelDownload: () => ipcRenderer.invoke('app:cancel-download-update'),
+    install: () => ipcRenderer.invoke('app:install-update'),
+    getInfo: () => ipcRenderer.invoke('app:get-update-info')
+  },
+
   // 系统操作
   system: {
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
@@ -109,7 +113,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 事件监听
   on: (channel, callback) => {
-    const validChannels = ['project-opened', 'menu-refresh', 'menu-git-fetch', 'menu-git-pull', 'menu-settings', 'global-config-status'];
+    const validChannels = ['project-opened', 'menu-refresh', 'menu-git-fetch', 'menu-git-pull', 'menu-settings', 'update:status'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (event, ...args) => callback(...args));
     }

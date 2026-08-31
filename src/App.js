@@ -3,6 +3,7 @@ import { Layout, message, ConfigProvider } from 'antd';
 import WelcomePage from './components/WelcomePage';
 import MainWorkspace from './components/MainWorkspace';
 import CustomTitleBar from './components/CustomTitleBar';
+import UpdateManager from './components/UpdateManager';
 import './App.css';
 
 const { Content } = Layout;
@@ -18,22 +19,13 @@ function App() {
       setCurrentProject(data);
     };
 
-    // 监听服务端全局配置获取状态：失败时警告用户
-    const handleGlobalConfigStatus = (status) => {
-      if (status && status.fetched && !status.success) {
-        message.warning('当前无法访问最新的服务端配置文件');
-      }
-    };
-
     if (window.electronAPI) {
       window.electronAPI.on('project-opened', handleProjectOpened);
-      window.electronAPI.on('global-config-status', handleGlobalConfigStatus);
     }
 
     return () => {
       if (window.electronAPI) {
         window.electronAPI.removeAllListeners('project-opened');
-        window.electronAPI.removeAllListeners('global-config-status');
       }
     };
   }, []);
@@ -71,6 +63,7 @@ function App() {
 
   return (
     <ConfigProvider theme={{ token: { colorPrimary: themeColor, colorInfo: themeColor } }}>
+      <UpdateManager />
       <Layout className="app-layout">
         <CustomTitleBar projectName={currentProject?.info?.name} />
         <Content className="app-content">

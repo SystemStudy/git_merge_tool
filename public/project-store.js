@@ -23,7 +23,7 @@ function hasProjectsFile() {
   try {
     return fs.existsSync(projectStore.path);
   } catch (error) {
-    console.warn(`[project-store] 检查配置文件失败: ${error.message}`);
+    console.debug(`[project-store] 检查配置文件失败: ${error.message}`);
     return false;
   }
 }
@@ -89,7 +89,7 @@ function migrateFromLegacyStore(legacyStore) {
     .filter(p => p && typeof p === 'object')
     .map(({ path: projectPath, name, lastOpened }) => ({ path: projectPath, name, lastOpened }));
 
-  console.log(`[project-store] 开始迁移 recentProjects: ${projects.length} 条`);
+  console.debug(`[project-store] 开始迁移 recentProjects: ${projects.length} 条`);
 
   try {
     setRecentProjects(projects);
@@ -106,11 +106,11 @@ function migrateFromLegacyStore(legacyStore) {
     // projectsRepos 为已废弃配置，迁移时一并清理
     if (legacyStore.has('projectsRepos')) {
       legacyStore.delete('projectsRepos');
-      console.log('[project-store] 已删除废弃配置 projectsRepos');
+      console.debug('[project-store] 已删除废弃配置 projectsRepos');
     }
 
-    console.log(`[project-store] 迁移完成: ${projects.length} 个项目 -> ${projectStore.path}`);
-    console.log('[project-store] 已从旧配置文件中删除 recentProjects');
+    console.debug(`[project-store] 迁移完成: ${projects.length} 个项目 -> ${projectStore.path}`);
+    console.debug('[project-store] 已从旧配置文件中删除 recentProjects');
     return { migrated: true, projectCount: projects.length };
   } catch (error) {
     console.error(`[project-store] 迁移失败: ${error.message}`);

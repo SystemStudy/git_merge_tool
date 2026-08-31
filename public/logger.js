@@ -1,108 +1,53 @@
-const fs = require('fs');
+/**
+ * 日志模块：基于 electron-log，接管主进程 console 输出
+ * - 开发环境（electron-dev）: 打印 debug 及以上级别
+ * - 生产环境（打包产物）: 仅打印 warn 及以上级别
+ * - 日志文件: 单文件上限 50MB（超出轮转为 <日期>.old.log），按天分片
+ */
 const path = require('path');
-const os = require('os');
+const log = require('electron-log/main');
+const isDev = require('electron-is-dev');
 
-const LOG_DIR = path.join(os.tmpdir(), 'git-merge-assistant', 'logs');
-const LOG_FILE = path.join(LOG_DIR, 'app.log');
-
-let logStream = null;
-
-function ensureLogDir() {
-  if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-  }
-}
-
-function cleanOldLogs() {
-  try {
-    if (fs.existsSync(LOG_DIR)) {
-      const files = fs.readdirSync(LOG_DIR);
-      files.forEach(file => {
-        const filePath = path.join(LOG_DIR, file);
-        try {
-          fs.unlinkSync(filePath);
-        } catch (e) {
-          // ignore
-        }
-      });
-    }
-  } catch (e) {
-    // ignore
-  }
-}
+let initialized = false;
 
 function initLogger() {
-  ensureLogDir();
-  cleanOldLogs();
-
-  logStream = fs.createWriteStream(LOG_FILE, { flags: 'a', encoding: 'utf8' });
-  logStream.on('error', () => {});
-
-  const originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info,
-    debug: console.debug
-  };
-
-  function formatArgs(args) {
-    return args.map(arg => {
-      if (typeof arg === 'object') {
-        try {
-          return JSON.stringify(arg);
-        } catch (e) {
-          return String(arg);
-        }
-      }
-      return String(arg);
-    }).join(' ');
+  if (initialized) {
+    return;
   }
+  initialized = true;
 
-  function writeToFile(level, args) {
-    if (!logStream) return;
-    const timestamp = new Date().toISOString();
-    const message = formatArgs(args);
-    logStream.write(`[${timestamp}] [${level}] ${message}\n`);
-  }
+  // 不注入 renderer preload：本项目 preload 由 public/preload.js 自行实现，renderer 日志无需落盘
+  log.initialize({ preload: false });
 
-  console.log = function (...args) {
-    originalConsole.log.apply(console, args);
-    writeToFile('LOG', args);
+  // 级别过滤：开发环境 debug，生产环境 warn
+  const minLevel = isDev ? 'debug' : 'warn';
+  log.transports.console.level = minLevel;
+  log.transports.file.level = minLevel;
+
+  // 单文件上限 50MB，按天分片（跨天时自动写入新文件）
+  log.transports.file.maxSize = 50 * 1024 * 1024;
+  log.transports.file.resolvePathFn = (variables, message) => {
+    const date = (message && message.date) || new Date();
+    const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return path.join(variables.libraryDefaultDir, `${day}.log`);
   };
 
-  console.error = function (...args) {
-    originalConsole.error.apply(console, args);
-    writeToFile('ERROR', args);
-  };
+  // 接管全局 console：业务代码中的 console.* 统一进入 electron-log
+  console.log = log.log;
+  console.info = log.info;
+  console.warn = log.warn;
+  console.error = log.error;
+  console.debug = log.debug;
 
-  console.warn = function (...args) {
-    originalConsole.warn.apply(console, args);
-    writeToFile('WARN', args);
-  };
-
-  console.info = function (...args) {
-    originalConsole.info.apply(console, args);
-    writeToFile('INFO', args);
-  };
-
-  console.debug = function (...args) {
-    originalConsole.debug.apply(console, args);
-    writeToFile('DEBUG', args);
-  };
-
-  console.log(`[Logger] 日志文件: ${LOG_FILE}`);
+  log.debug(`[Logger] 日志目录: ${path.dirname(getLogFilePath())}`);
 }
 
 function getLogFilePath() {
-  return LOG_FILE;
+  return log.transports.file.getFile().path;
 }
 
 function closeLogger() {
-  if (logStream) {
-    logStream.end();
-    logStream = null;
-  }
+  // electron-log 文件 transport 默认同步写入，无需手动关闭
 }
 
-module.exports = { initLogger, getLogFilePath, closeLogger, LOG_DIR };
+module.exports = { initLogger, getLogFilePath, closeLogger };

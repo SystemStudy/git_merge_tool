@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Alert, Tabs, message, Divider } from 'antd';
-import { ExportOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Alert, Tabs, message, Divider, Checkbox } from 'antd';
+import { ExportOutlined, DownloadOutlined } from '@ant-design/icons';
 
 
 const THEME_COLORS = [
@@ -68,8 +68,23 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
   };
 
   const handleFinish = (values) => {
-    const newSettings = { ...settings, ...values, themeColor };
+    // updateChannelBeta 为复选框值，转换为原有 updateChannel 存储语义（'stable'/'beta'）
+    const { updateChannelBeta, ...rest } = values;
+    const newSettings = {
+      ...settings,
+      ...rest,
+      themeColor,
+      updateChannel: updateChannelBeta ? 'beta' : 'stable',
+    };
     onSave(newSettings);
+  };
+
+  const handleCheckUpdate = async () => {
+    try {
+      await window.electronAPI.update.check();
+    } catch (error) {
+      message.error('检查更新失败: ' + (error.message || error));
+    }
   };
 
   return (
@@ -151,6 +166,23 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
               <Form.Item label="日志管理">
                 <Button icon={<ExportOutlined />} onClick={handleExportLog}>
                   导出当前日志
+                </Button>
+              </Form.Item>
+
+              <Divider />
+
+              <Form.Item
+                label="更新通道"
+                name="updateChannelBeta"
+                valuePropName="checked"
+                initialValue={settings.updateChannel === 'beta'}
+              >
+                <Checkbox>是否更新预览版(beta)</Checkbox>
+              </Form.Item>
+
+              <Form.Item label="检查更新">
+                <Button icon={<DownloadOutlined />} onClick={handleCheckUpdate}>
+                  检查更新
                 </Button>
               </Form.Item>
             </>

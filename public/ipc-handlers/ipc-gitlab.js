@@ -58,7 +58,7 @@ module.exports = function registerGitLabHandlers(ipcMain) {
           timeout: 30000
         }
       );
-      console.log('[gitlab-create-merge-request] 合并请求创建成功，源分支将被删除:', removeSourceBranch);
+      console.debug('[gitlab-create-merge-request] 合并请求创建成功，源分支将被删除:', removeSourceBranch);
       return { success: true, mergeRequest: response.data };
     } catch (error) {
       console.error('[gitlab-create-merge-request] 错误:', error.response?.data || error.message);

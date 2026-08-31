@@ -6,7 +6,7 @@ const { formatTimestamp } = require('./utils');
 module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath }) {
   ipcMain.handle('git-get-branches', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-branches] 开始获取分支列表`);
+    console.debug(`[${timestamp}] [git-get-branches] 开始获取分支列表`);
 
     if (!getGit()) {
       console.error(`[${timestamp}] [git-get-branches] 错误: 未打开项目`);
@@ -17,8 +17,8 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       const git = getGit();
       const branches = await git.branch(['-a']);
       const cleanedBranches = branches.all.map(b => b.replace('remotes/origin/', '')).filter((v, i, a) => a.indexOf(v) === i);
-      console.log(`[${timestamp}] [git-get-branches] 获取到 ${cleanedBranches.length} 个分支`);
-      console.log(`[${timestamp}] [git-get-branches] 当前分支: ${branches.current}`);
+      console.debug(`[${timestamp}] [git-get-branches] 获取到 ${cleanedBranches.length} 个分支`);
+      console.debug(`[${timestamp}] [git-get-branches] 当前分支: ${branches.current}`);
       return cleanedBranches;
     } catch (error) {
       console.error(`[${timestamp}] [git-get-branches] 错误: ${error.message}`);
@@ -28,7 +28,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-get-current-branch', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-current-branch] 开始获取当前分支`);
+    console.debug(`[${timestamp}] [git-get-current-branch] 开始获取当前分支`);
 
     if (!getGit()) {
       console.error(`[${timestamp}] [git-get-current-branch] 错误: 未打开项目`);
@@ -38,7 +38,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     try {
       const git = getGit();
       const status = await git.status();
-      console.log(`[${timestamp}] [git-get-current-branch] 当前分支: ${status.current}`);
+      console.debug(`[${timestamp}] [git-get-current-branch] 当前分支: ${status.current}`);
       return status.current;
     } catch (error) {
       console.error(`[${timestamp}] [git-get-current-branch] 错误: ${error.message}`);
@@ -48,7 +48,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-get-user-config', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-user-config] 开始获取Git用户配置`);
+    console.debug(`[${timestamp}] [git-get-user-config] 开始获取Git用户配置`);
 
     if (!getGit()) {
       console.error(`[${timestamp}] [git-get-user-config] 错误: 未打开项目`);
@@ -64,7 +64,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       const name = nameResult?.value || '';
       const email = emailResult?.value || '';
 
-      console.log(`[${timestamp}] [git-get-user-config] 用户名: ${name}, 邮箱: ${email}`);
+      console.debug(`[${timestamp}] [git-get-user-config] 用户名: ${name}, 邮箱: ${email}`);
 
       return {
         name: name,
@@ -78,8 +78,8 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-get-commits', async (event, branch, limit = 50, skip = 0) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-commits] 开始获取提交记录`);
-    console.log(`[${timestamp}] [git-get-commits] 参数: branch="${branch}", limit=${limit}, skip=${skip}`);
+    console.debug(`[${timestamp}] [git-get-commits] 开始获取提交记录`);
+    console.debug(`[${timestamp}] [git-get-commits] 参数: branch="${branch}", limit=${limit}, skip=${skip}`);
 
     if (!getGit()) {
       const error = new Error('未打开项目');
@@ -95,7 +95,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
     try {
       const git = getGit();
-      console.log(`[${timestamp}] [git-get-commits] 正在执行 git log 命令...`);
+      console.debug(`[${timestamp}] [git-get-commits] 正在执行 git log 命令...`);
 
       // 只使用本地分支名称，排除远程分支
       let branchToUse = branch;
@@ -104,10 +104,10 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         const localBranch = localBranches.all.find(b => b === branch);
         if (localBranch) {
           branchToUse = localBranch;
-          console.log(`[${timestamp}] [git-get-commits] 确认为本地分支: ${localBranch}`);
+          console.debug(`[${timestamp}] [git-get-commits] 确认为本地分支: ${localBranch}`);
         } else {
           // 不是本地分支，尝试作为远程分支处理（带 origin/ 前缀）
-          console.log(`[${timestamp}] [git-get-commits] 未找到本地分支 ${branch}，尝试远程分支 origin/${branch}`);
+          console.debug(`[${timestamp}] [git-get-commits] 未找到本地分支 ${branch}，尝试远程分支 origin/${branch}`);
           branchToUse = `origin/${branch}`;
         }
       } else {
@@ -116,11 +116,11 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         const branches = await git.branchLocal();
         if (branches.all.includes(localBranchName)) {
           branchToUse = localBranchName;
-          console.log(`[${timestamp}] [git-get-commits] 转换为本地分支: ${localBranchName}`);
+          console.debug(`[${timestamp}] [git-get-commits] 转换为本地分支: ${localBranchName}`);
         }
       }
 
-      console.log(`[${timestamp}] [git-get-commits] 最终使用分支: "${branchToUse}"`);
+      console.debug(`[${timestamp}] [git-get-commits] 最终使用分支: "${branchToUse}"`);
 
       let log;
       if (skip > 0) {
@@ -174,16 +174,16 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         log = { all: parsedCommits };
       }
 
-      console.log(`[${timestamp}] [git-get-commits] 获取到 ${log.all?.length || 0} 条提交记录`);
+      console.debug(`[${timestamp}] [git-get-commits] 获取到 ${log.all?.length || 0} 条提交记录`);
 
       const filteredCommits = log.all?.filter(commit => {
         return commit.hash && commit.message;
       }) || [];
 
-      console.log(`[${timestamp}] [git-get-commits] 过滤后剩余 ${filteredCommits.length} 条提交记录`);
+      console.debug(`[${timestamp}] [git-get-commits] 过滤后剩余 ${filteredCommits.length} 条提交记录`);
 
       if (filteredCommits.length > 0) {
-        console.log(`[${timestamp}] [git-get-commits] 第一条提交:`, JSON.stringify(filteredCommits[0], null, 2));
+        console.debug(`[${timestamp}] [git-get-commits] 第一条提交:`, JSON.stringify(filteredCommits[0], null, 2));
       }
 
       return filteredCommits;
@@ -196,8 +196,8 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-get-all-commits', async (event, branch) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-all-commits] 开始获取全部提交记录`);
-    console.log(`[${timestamp}] [git-get-all-commits] 参数: branch="${branch}"`);
+    console.debug(`[${timestamp}] [git-get-all-commits] 开始获取全部提交记录`);
+    console.debug(`[${timestamp}] [git-get-all-commits] 参数: branch="${branch}"`);
 
     if (!getGit()) {
       const error = new Error('未打开项目');
@@ -219,10 +219,10 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         const localBranch = localBranches.all.find(b => b === branch);
         if (localBranch) {
           branchToUse = localBranch;
-          console.log(`[${timestamp}] [git-get-all-commits] 确认为本地分支: ${localBranch}`);
+          console.debug(`[${timestamp}] [git-get-all-commits] 确认为本地分支: ${localBranch}`);
         } else {
           // 不是本地分支，尝试作为远程分支处理
-          console.log(`[${timestamp}] [git-get-all-commits] 未找到本地分支 ${branch}，尝试远程分支 origin/${branch}`);
+          console.debug(`[${timestamp}] [git-get-all-commits] 未找到本地分支 ${branch}，尝试远程分支 origin/${branch}`);
           branchToUse = `origin/${branch}`;
         }
       } else {
@@ -230,11 +230,11 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         const localBranches = await git.branchLocal();
         if (localBranches.all.includes(localBranchName)) {
           branchToUse = localBranchName;
-          console.log(`[${timestamp}] [git-get-all-commits] 转换为本地分支: ${localBranchName}`);
+          console.debug(`[${timestamp}] [git-get-all-commits] 转换为本地分支: ${localBranchName}`);
         }
       }
 
-      console.log(`[${timestamp}] [git-get-all-commits] 使用分支: "${branchToUse}"`);
+      console.debug(`[${timestamp}] [git-get-all-commits] 使用分支: "${branchToUse}"`);
 
       const format = '%H%n%an%n%ae%n%ad%n%s%n%b%n---END---';
       const log = await git.raw([
@@ -259,7 +259,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       });
 
       const filteredCommits = parsedCommits.filter(commit => commit.hash && commit.message);
-      console.log(`[${timestamp}] [git-get-all-commits] 获取到 ${filteredCommits.length} 条提交记录`);
+      console.debug(`[${timestamp}] [git-get-all-commits] 获取到 ${filteredCommits.length} 条提交记录`);
       return filteredCommits;
     } catch (error) {
       console.error(`[${timestamp}] [git-get-all-commits] 执行失败: ${error.message}`);
@@ -286,7 +286,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       }
     } catch (e) {
       // ls-remote 本身失败（如网络问题）不阻断检查，继续交由后续 pull 报真实错误
-      console.warn(`[git-pull] ls-remote 检查失败，继续尝试 pull: ${e && e.message}`);
+      console.debug(`[git-pull] ls-remote 检查失败，继续尝试 pull: ${e && e.message}`);
     }
     if (!remoteExists) {
       throw new Error(`远程分支不存在: origin/${branch}，请先推送该分支或确认分支名`);
@@ -303,7 +303,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         const diffOutput = await git.raw(['diff', '--name-only', '--diff-filter=U']);
         const conflictedFiles = diffOutput.trim().split('\n').filter(Boolean);
         if (conflictedFiles.length > 0) {
-          console.log(`[git-pull] 检测到合并冲突，冲突文件:`, conflictedFiles);
+          console.debug(`[git-pull] 检测到合并冲突，冲突文件:`, conflictedFiles);
           return { status: 'conflict', conflictedFiles };
         }
       } catch (e) {
@@ -328,15 +328,15 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         remoteExists = false;
       }
     } catch (e) {
-      console.warn(`[git-force-sync-branch] ls-remote 检查失败，继续尝试: ${e && e.message}`);
+      console.debug(`[git-force-sync-branch] ls-remote 检查失败，继续尝试: ${e && e.message}`);
     }
     if (!remoteExists) {
-      console.log(`[git-force-sync-branch] 远程分支不存在: origin/${branch}，跳过远程更新`);
+      console.debug(`[git-force-sync-branch] 远程分支不存在: origin/${branch}，跳过远程更新`);
       // 仅尝试切换本地分支，不做 fetch 和 reset --hard
       try {
         await getGit().checkout(branch);
       } catch (e) {
-        console.warn(`[git-force-sync-branch] 本地分支也不存在: ${branch}，跳过切换`);
+        console.debug(`[git-force-sync-branch] 本地分支也不存在: ${branch}，跳过切换`);
       }
       return { success: true, remoteExists: false };
     }
@@ -379,45 +379,45 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     const results = { success: [], skipped: [], errors: [] };
 
     for (const sha of commitShas) {
-      console.log(`[git-cherry-pick] 开始 cherry-pick 提交: ${sha}`);
+      console.debug(`[git-cherry-pick] 开始 cherry-pick 提交: ${sha}`);
       try {
         await git.raw(['cherry-pick', sha]);
         results.success.push(sha);
-        console.log(`[git-cherry-pick] 成功 cherry-pick 提交: ${sha}`);
+        console.debug(`[git-cherry-pick] 成功 cherry-pick 提交: ${sha}`);
       } catch (error) {
-        console.log(`[git-cherry-pick] cherry-pick 提交 ${sha} 失败: ${error.message}`);
+        console.debug(`[git-cherry-pick] cherry-pick 提交 ${sha} 失败: ${error.message}`);
 
         // 检查是否是提交已存在的错误
         if (error.message.includes('empty') ||
             error.message.includes('nothing to commit') ||
             error.message.includes('already exists')) {
-          console.log(`[git-cherry-pick] 提交 ${sha} 已存在，尝试跳过`);
+          console.debug(`[git-cherry-pick] 提交 ${sha} 已存在，尝试跳过`);
           try {
             await git.raw(['cherry-pick', '--skip']);
             results.skipped.push(sha);
-            console.log(`[git-cherry-pick] 已跳过提交: ${sha}`);
+            console.debug(`[git-cherry-pick] 已跳过提交: ${sha}`);
           } catch (skipError) {
-            console.log(`[git-cherry-pick] 跳过失败，尝试中止: ${skipError.message}`);
+            console.debug(`[git-cherry-pick] 跳过失败，尝试中止: ${skipError.message}`);
             try {
               await git.raw(['cherry-pick', '--abort']);
             } catch (abortError) {
-              console.log(`[git-cherry-pick] 中止失败: ${abortError.message}`);
+              console.debug(`[git-cherry-pick] 中止失败: ${abortError.message}`);
             }
             results.skipped.push(sha);
           }
         } else {
-          console.log(`[git-cherry-pick] 非预期错误，尝试中止: ${error.message}`);
+          console.error(`[git-cherry-pick] 非预期错误，尝试中止: ${error.message}`);
           try {
             await git.raw(['cherry-pick', '--abort']);
           } catch (abortError) {
-            console.log(`[git-cherry-pick] 中止失败: ${abortError.message}`);
+            console.debug(`[git-cherry-pick] 中止失败: ${abortError.message}`);
           }
           results.errors.push({ sha, error: error.message });
         }
       }
     }
 
-    console.log(`[git-cherry-pick] 完成。结果:`, results);
+    console.debug(`[git-cherry-pick] 完成。结果:`, results);
     return results;
   });
 
@@ -429,12 +429,12 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[git-push] 第 ${attempt} 次尝试推送分支 ${branch}`);
+        console.debug(`[git-push] 第 ${attempt} 次尝试推送分支 ${branch}`);
         
         // 使用 push 的数组参数形式，添加 --porcelain 获取标准化输出
         await getGit().push(['origin', branch, '--porcelain']);
         
-        console.log(`[git-push] 推送成功: ${branch}`);
+        console.debug(`[git-push] 推送成功: ${branch}`);
         return { success: true };
         
       } catch (error) {
@@ -451,11 +451,11 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
           error.message.includes('Invalid username or password');
         
         if (isAuthError) {
-          console.warn('[git-push] 检测到认证失败');
+          console.debug('[git-push] 检测到认证失败');
           
           // 如果不是最后一次尝试，等待后重试
           if (attempt < maxRetries) {
-            console.log(`[git-push] 等待 1 秒后重试...`);
+            console.debug(`[git-push] 等待 1 秒后重试...`);
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue;
           }
@@ -567,7 +567,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       // 预检远程分支是否存在
       const remote = await git.raw(['ls-remote', '--heads', 'origin', branchName]);
       if (!remote || !remote.trim()) {
-        console.log(`[git-fetch-branch] 远程分支不存在: origin/${branchName}，跳过拉取`);
+        console.debug(`[git-fetch-branch] 远程分支不存在: origin/${branchName}，跳过拉取`);
         return { success: true, remoteExists: false };
       }
       await git.raw(['fetch', 'origin', branchName]);
@@ -588,7 +588,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
     } catch (error) {
       // 如果普通删除失败（如分支未合并），尝试强制删除
       if (force || error.message.includes('not fully merged')) {
-        console.log(`[git-delete-local-branch] 普通删除失败，强制删除分支: ${branchName}`);
+        console.debug(`[git-delete-local-branch] 普通删除失败，强制删除分支: ${branchName}`);
         await getGit().raw(['branch', '-D', branchName]);
         return { success: true };
       }
@@ -627,18 +627,18 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
   // 检查当前分支相对于目标远程分支是否有新的提交
   ipcMain.handle('git-check-has-new-commits', async (event, targetBranch) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-check-has-new-commits] 检查是否有新提交: ${targetBranch}`);
+    console.debug(`[${timestamp}] [git-check-has-new-commits] 检查是否有新提交: ${targetBranch}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
     try {
       const result = await getGit().raw(['rev-list', '--count', `origin/${targetBranch}..HEAD`]);
       const count = parseInt(result.trim(), 10) || 0;
-      console.log(`[${timestamp}] [git-check-has-new-commits] 新提交数量: ${count}`);
+      console.debug(`[${timestamp}] [git-check-has-new-commits] 新提交数量: ${count}`);
       return { hasNewCommits: count > 0, count };
     } catch (error) {
       // 如果 origin/xxx 不存在（首次推送），说明一定有新提交
-      console.log(`[${timestamp}] [git-check-has-new-commits] 检查失败(可能是首次推送), 认为有新提交: ${error.message}`);
+      console.debug(`[${timestamp}] [git-check-has-new-commits] 检查失败(可能是首次推送), 认为有新提交: ${error.message}`);
       return { hasNewCommits: true, count: 1 };
     }
   });
@@ -646,18 +646,18 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
   // 检查远程分支领先本地多少提交（本地落后远程的提交数）
   ipcMain.handle('git-check-behind', async (event, targetBranch) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-check-behind] 检查远程领先提交数: ${targetBranch}`);
+    console.debug(`[${timestamp}] [git-check-behind] 检查远程领先提交数: ${targetBranch}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
     try {
       const result = await getGit().raw(['rev-list', '--count', `HEAD..origin/${targetBranch}`]);
       const count = parseInt(result.trim(), 10) || 0;
-      console.log(`[${timestamp}] [git-check-behind] 远程领先提交数: ${count}`);
+      console.debug(`[${timestamp}] [git-check-behind] 远程领先提交数: ${count}`);
       return { behind: count > 0, count };
     } catch (error) {
       // origin/xxx 不存在或引用未更新，认为无远程新提交
-      console.log(`[${timestamp}] [git-check-behind] 检查失败(可能是远程引用不存在), 认为无新提交: ${error.message}`);
+      console.debug(`[${timestamp}] [git-check-behind] 检查失败(可能是远程引用不存在), 认为无新提交: ${error.message}`);
       return { behind: false, count: 0 };
     }
   });
@@ -683,14 +683,14 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-commit-exists', async (event, branch, commitHash) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-commit-exists] 检查提交是否存在: ${commitHash} in ${branch}`);
+    console.debug(`[${timestamp}] [git-commit-exists] 检查提交是否存在: ${commitHash} in ${branch}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
     try {
       const result = await getGit().raw(['branch', '--contains', commitHash, '--list', branch]);
       const exists = result.trim().length > 0;
-      console.log(`[${timestamp}] [git-commit-exists] 结果: ${exists}`);
+      console.debug(`[${timestamp}] [git-commit-exists] 结果: ${exists}`);
       return exists;
     } catch (error) {
       console.error(`[${timestamp}] [git-commit-exists] 检查失败:`, error.message);
@@ -700,7 +700,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-check-commits-in-branch', async (event, branch, commitSubjects) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-check-commits-in-branch] 通过commit信息检查提交是否存在: origin/${branch}`);
+    console.debug(`[${timestamp}] [git-check-commits-in-branch] 通过commit信息检查提交是否存在: origin/${branch}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -721,7 +721,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-cherry-pick-single', async (event, sha) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-cherry-pick-single] 开始 cherry-pick 单个提交: ${sha}`);
+    console.debug(`[${timestamp}] [git-cherry-pick-single] 开始 cherry-pick 单个提交: ${sha}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -736,25 +736,25 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
     try {
       await git.raw(['cherry-pick', sha]);
-      console.log(`[${timestamp}] [git-cherry-pick-single] 成功: ${sha}`);
+      console.debug(`[${timestamp}] [git-cherry-pick-single] 成功: ${sha}`);
       return { status: 'success', sha };
     } catch (error) {
       const msg = error.message || '';
 
       // 已存在的提交（空操作）
       if (msg.includes('empty') || msg.includes('nothing to commit') || msg.includes('already exists')) {
-        console.log(`[${timestamp}] [git-cherry-pick-single] 提交已存在，跳过: ${sha}`);
+        console.debug(`[${timestamp}] [git-cherry-pick-single] 提交已存在，跳过: ${sha}`);
         try { await git.raw(['cherry-pick', '--skip']); } catch {}
         return { status: 'skipped', sha };
       }
 
       // 检测冲突
       if (msg.includes('could not apply') || msg.includes('CONFLICT') || msg.includes('conflict')) {
-        console.log(`[${timestamp}] [git-cherry-pick-single] 检测到冲突: ${sha}`);
+        console.debug(`[${timestamp}] [git-cherry-pick-single] 检测到冲突: ${sha}`);
         try {
           const diffOutput = await git.raw(['diff', '--name-only', '--diff-filter=U']);
           const conflictedFiles = diffOutput.trim().split('\n').filter(Boolean);
-          console.log(`[${timestamp}] [git-cherry-pick-single] 冲突文件:`, conflictedFiles);
+          console.debug(`[${timestamp}] [git-cherry-pick-single] 冲突文件:`, conflictedFiles);
           return { status: 'conflict', sha, conflictedFiles };
         } catch (e) {
           console.error(`[${timestamp}] [git-cherry-pick-single] 获取冲突文件列表失败:`, e.message);
@@ -763,7 +763,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
       }
 
       // 其他错误 — 中止
-      console.log(`[${timestamp}] [git-cherry-pick-single] 错误，中止: ${msg}`);
+      console.error(`[${timestamp}] [git-cherry-pick-single] 错误，中止: ${msg}`);
       try { await git.raw(['cherry-pick', '--abort']); } catch {}
       return { status: 'error', sha, error: msg };
     }
@@ -771,7 +771,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-cherry-pick-continue', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-cherry-pick-continue] 继续 cherry-pick`);
+    console.debug(`[${timestamp}] [git-cherry-pick-continue] 继续 cherry-pick`);
 
     const { exec } = require('child_process');
 
@@ -784,7 +784,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
           if (err) reject(err); else resolve();
         });
       });
-      console.log(`[${timestamp}] [git-cherry-pick-continue] 成功`);
+      console.debug(`[${timestamp}] [git-cherry-pick-continue] 成功`);
       return { success: true };
     } catch (error) {
       console.error(`[${timestamp}] [git-cherry-pick-continue] 失败: ${error.message}`);
@@ -794,7 +794,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-cherry-pick-abort', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-cherry-pick-abort] 中止 cherry-pick`);
+    console.debug(`[${timestamp}] [git-cherry-pick-abort] 中止 cherry-pick`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -810,7 +810,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
   // 解决 merge 冲突后继续合并（用于 pull 产生的 merge 冲突）
   ipcMain.handle('git-merge-continue', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-merge-continue] 继续 merge`);
+    console.debug(`[${timestamp}] [git-merge-continue] 继续 merge`);
 
     const { exec } = require('child_process');
 
@@ -823,7 +823,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
           if (err) reject(err); else resolve();
         });
       });
-      console.log(`[${timestamp}] [git-merge-continue] 成功`);
+      console.debug(`[${timestamp}] [git-merge-continue] 成功`);
       return { success: true };
     } catch (error) {
       console.error(`[${timestamp}] [git-merge-continue] 失败: ${error.message}`);
@@ -834,7 +834,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
   // 放弃 merge（用于 pull 产生的 merge 冲突）
   ipcMain.handle('git-merge-abort', async () => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-merge-abort] 中止 merge`);
+    console.debug(`[${timestamp}] [git-merge-abort] 中止 merge`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -849,7 +849,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
 
   ipcMain.handle('git-amend-author', async (event, authorName, authorEmail) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-amend-author] 修改 HEAD author 为: ${authorName} <${authorEmail}>`);
+    console.debug(`[${timestamp}] [git-amend-author] 修改 HEAD author 为: ${authorName} <${authorEmail}>`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -858,7 +858,7 @@ module.exports = function registerGitHandlers(ipcMain, { getGit, getProjectPath 
         'commit', '--amend', '--no-edit',
         `--author=${authorName} <${authorEmail}>`
       ]);
-      console.log(`[${timestamp}] [git-amend-author] 成功`);
+      console.debug(`[${timestamp}] [git-amend-author] 成功`);
       return { success: true };
     } catch (error) {
       console.error(`[${timestamp}] [git-amend-author] 失败: ${error.message}`);
