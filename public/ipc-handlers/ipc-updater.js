@@ -11,7 +11,7 @@
  * 更新通道：设置 updateChannel=beta 走 beta（latest-beta.yml），否则走 stable（latest.yml）
  */
 const { ipcMain, app } = require('electron');
-const { autoUpdater } = require('electron-updater');
+const { autoUpdater, CancellationToken } = require('electron-updater');
 const isDev = require('electron-is-dev');
 
 const DEV_UPDATE_URL = 'http://localhost:8899';
@@ -24,6 +24,8 @@ let store = null;
 let silentCheckInProgress = false;
 // 检查互斥锁：避免静默检查与手动检查并发触发
 let checking = false;
+// 当前下载任务的取消令牌
+let downloadCancellationToken = null;
 
 function sendToRenderer(payload) {
   const win = getWindow();
@@ -54,11 +56,17 @@ function initAutoUpdater() {
   autoUpdater.autoDownload = false;
   // 开发模式（未打包）下也允许检查更新，便于本地联调
   autoUpdater.forceDevUpdateConfig = true;
+  // 测试阶段安装包未做代码签名，跳过 electron-updater 的签名校验
+  autoUpdater.verifyUpdateCodeSignature = async () => null;
+  // 更新服务器不一定保留旧版本 blockmap，直接全量下载，避免 404 回退
+  autoUpdater.disableDifferentialDownload = true;
+  // 当前为完整 NSIS 安装包，不使用 web installer
+  autoUpdater.disableWebInstaller = true;
 
   refreshFeedConfig();
 
   autoUpdater.on('checking-for-update', () => {
-    sendToRenderer({ status: 'checking' });
+    sendToRenderer({ status: 'checking', silent: silentCheckInProgress });
   });
 
   // 静默/手动检查发现新版本都推送（有更新值得提示用户）
@@ -68,6 +76,7 @@ function initAutoUpdater() {
       version: info.version,
       currentVersion: app.getVersion(),
       releaseDate: info.releaseDate || null,
+      releaseNotes: info.releaseNotes || null,
       channel: resolveChannel(),
     });
   });
@@ -89,6 +98,7 @@ function initAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    downloadCancellationToken = null;
     sendToRenderer({ status: 'downloaded', version: info.version });
   });
 
@@ -147,12 +157,27 @@ module.exports = function registerUpdaterHandlers(ipcMainRef, { getWindow: getWi
 
   // 用户确认后下载更新（失败时渲染进程会收到 update:status error）
   ipcMainRef.handle('app:download-update', async () => {
+    downloadCancellationToken = new CancellationToken();
     try {
-      await autoUpdater.downloadUpdate();
+      await autoUpdater.downloadUpdate(downloadCancellationToken);
       return { success: true };
     } catch (error) {
+      if (downloadCancellationToken && downloadCancellationToken.cancelled) {
+        sendToRenderer({ status: 'cancelled' });
+        return { success: false, cancelled: true, error: '已取消下载' };
+      }
       return { success: false, error: error.message || String(error) };
+    } finally {
+      downloadCancellationToken = null;
     }
+  });
+
+  // 用户取消正在进行的下载更新
+  ipcMainRef.handle('app:cancel-download-update', () => {
+    if (downloadCancellationToken) {
+      downloadCancellationToken.cancel();
+    }
+    return { success: true };
   });
 
   // 立即重启并安装已下载的更新

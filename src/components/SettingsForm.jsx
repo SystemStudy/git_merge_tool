@@ -82,7 +82,6 @@ const SettingsForm = ({ settings, onSave, onThemeColorChange, onSettingsChange }
   const handleCheckUpdate = async () => {
     try {
       await window.electronAPI.update.check();
-      message.info('正在检查更新...');
     } catch (error) {
       message.error('检查更新失败: ' + (error.message || error));
     }
