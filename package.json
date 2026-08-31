@@ -1,6 +1,6 @@
 {
   "name": "LandrayGitTool",
-  "version": "1.6.0",
+  "version": "1.0.0",
   "description": "Git合并辅助工具 - Electron+React版本",
   "main": "public/electron.js",
   "homepage": ".",
@@ -13,9 +13,10 @@
     "electron-dev": "concurrently \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron-pack": "npm run build && electron-builder build -c.extraMetadata.main=build/electron.js",
     "electron-build-win": "npm run build && electron-builder --win",
-    "electron-build-win-portable": "npm run build && electron-builder --win portable",
+    "electron-build-win-beta": "npm run build && electron-builder --win -c.publish.channel=beta",
     "electron-build-mac": "npm run build && electron-builder --mac",
-    "electron-build-mac-dmg": "npm run build && electron-builder --mac dmg",
+    "electron-build-mac-beta": "npm run build && electron-builder --mac -c.publish.channel=beta",
+    "update-server": "node scripts/update-server.js",
     "preelectron-pack": "npm run build",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -27,7 +28,9 @@
     "archiver": "^7.0.1",
     "axios": "^1.6.2",
     "electron-is-dev": "^2.0.0",
+    "electron-log": "^5.4.4",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.9",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
@@ -60,7 +63,7 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -77,6 +80,13 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon.icns",
@@ -87,10 +97,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "LandrayGitTool"
+      "shortcutName": "LandrayGitTool",
+      "artifactName": "LandrayGitTool-Setup-${version}.exe"
     },
-    "portable": {
-      "artifactName": "LandrayGitTool-便携版-${version}.exe"
+    "publish": {
+      "provider": "generic",
+      "url": "https://mkenv.ywork.me/mkenv/gitMergeVersion/",
+      "channel": "latest"
     }
   },
   "browserslist": {

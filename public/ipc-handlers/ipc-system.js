@@ -8,7 +8,7 @@ const archiver = require('archiver');
 const { exec } = require('child_process');
 const { formatTimestamp } = require('./utils');
 
-module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, projectStore, globalConfigStore, globalConfigStatus, getProjectPath, getLogFilePath, openProject }) {
+module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, projectStore, getProjectPath, getLogFilePath, openProject }) {
   // 窗口控制 — 最小化
   ipcMain.handle('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
@@ -69,15 +69,6 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
     return store.get('settings') || {};
   });
 
-  // 获取服务端下发的全局配置（独立文件存储，与应用设置区分）
-  ipcMain.handle('get-global-config', () => {
-    return {
-      config: globalConfigStore.get('config'),
-      lastUpdated: globalConfigStore.get('lastUpdated'),
-      status: globalConfigStatus
-    };
-  });
-
   // 保存设置
   ipcMain.handle('save-settings', (event, settings) => {
     store.set('settings', settings);
@@ -107,6 +98,10 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
         return { success: false, error: '日志文件不存在' };
       }
 
+      // 日志按天分片，导出目录下全部 .log 文件
+      const logDir = path.dirname(logPath);
+      const logFiles = fs.readdirSync(logDir).filter(f => f.endsWith('.log'));
+
       const result = await dialog.showSaveDialog(mainWindow, {
         title: '导出日志文件',
         defaultPath: `LandrayGitTool-日志-${new Date().toISOString().slice(0, 10)}.zip`,
@@ -122,7 +117,7 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
 
       return new Promise((resolve) => {
         output.on('close', () => {
-          console.log(`[export-log-zip] 日志已压缩至: ${result.filePath}`);
+          console.debug(`[export-log-zip] 日志已压缩至: ${result.filePath}`);
           resolve({ success: true, path: result.filePath });
         });
 
@@ -132,7 +127,7 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
         });
 
         archive.pipe(output);
-        archive.file(logPath, { name: 'app.log' });
+        logFiles.forEach(f => archive.file(path.join(logDir, f), { name: f }));
         archive.finalize();
       });
     } catch (error) {
@@ -174,7 +169,7 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
   ipcMain.handle('open-file-in-editor', async (event, filePath) => {
     const timestamp = formatTimestamp();
     const fullPath = path.join(getProjectPath() || '', filePath);
-    console.log(`[${timestamp}] [open-file-in-editor] 尝试打开文件: ${fullPath}`);
+    console.debug(`[${timestamp}] [open-file-in-editor] 尝试打开文件: ${fullPath}`);
 
     if (!fs.existsSync(fullPath)) {
       return { success: false, error: '目标文件不存在，请检查文件路径' };
@@ -190,7 +185,7 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
             if (err) reject(err); else resolve();
           });
         });
-        console.log(`[${timestamp}] [open-file-in-editor] 使用 ${editor}（PATH）打开成功`);
+        console.debug(`[${timestamp}] [open-file-in-editor] 使用 ${editor}（PATH）打开成功`);
         return { success: true, editor };
       } catch {
         // 尝试通过安装路径直接启动
@@ -202,7 +197,7 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
                 if (err) reject(err); else resolve();
               });
             });
-            console.log(`[${timestamp}] [open-file-in-editor] 使用 ${editorPath} 打开成功`);
+            console.debug(`[${timestamp}] [open-file-in-editor] 使用 ${editorPath} 打开成功`);
             return { success: true, editor };
           } catch {
             continue;
@@ -214,13 +209,13 @@ module.exports = function registerSystemHandlers(ipcMain, { mainWindow, store, p
     // 最后尝试用系统默认编辑器打开
     try {
       await shell.openPath(fullPath);
-      console.log(`[${timestamp}] [open-file-in-editor] 使用系统默认程序打开成功`);
+      console.debug(`[${timestamp}] [open-file-in-editor] 使用系统默认程序打开成功`);
       return { success: true, editor: 'system-default' };
     } catch (e) {
-      console.log(`[${timestamp}] [open-file-in-editor] 系统默认程序打开失败: ${e.message}`);
+      console.debug(`[${timestamp}] [open-file-in-editor] 系统默认程序打开失败: ${e.message}`);
     }
 
-    console.log(`[${timestamp}] [open-file-in-editor] 未检测到支持的编辑器`);
+    console.debug(`[${timestamp}] [open-file-in-editor] 未检测到支持的编辑器`);
     return { success: false, error: '未检测到支持的编辑器（已检查 PATH 和常见安装路径），请手动处理冲突文件' };
   });
 };

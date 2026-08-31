@@ -61,7 +61,7 @@ async function readRepoName(git) {
     const match = url.replace(/\/+$/, '').match(/([^/:]+?)(?:\.git)?$/);
     return match ? match[1] : null;
   } catch (error) {
-    console.warn(`[readRepoName] 读取远程仓库名失败: ${error.message}`);
+    console.debug(`[readRepoName] 读取远程仓库名失败: ${error.message}`);
     return null;
   }
 }
@@ -76,7 +76,7 @@ function readModuleNameFromDeployXml(projectPath) {
     const name = match?.[1]?.trim();
     return name || null;
   } catch (error) {
-    console.warn(`[readModuleNameFromDeployXml] 解析 deploy.xml 失败: ${error.message}`);
+    console.debug(`[readModuleNameFromDeployXml] 解析 deploy.xml 失败: ${error.message}`);
     return null;
   }
 }
@@ -90,7 +90,7 @@ function readModuleNameFromPackageJson(projectPath) {
     const desc = typeof pkg.description === 'string' ? pkg.description.trim() : '';
     return desc || null;
   } catch (error) {
-    console.warn(`[readModuleNameFromPackageJson] 解析 package.json 失败: ${error.message}`);
+    console.debug(`[readModuleNameFromPackageJson] 解析 package.json 失败: ${error.message}`);
     return null;
   }
 }
@@ -110,7 +110,7 @@ module.exports = function registerVersionJsonHandlers(ipcMain, { getGit, getProj
     const merged = [...new Set([...readCommonModules(), ...cleaned])].slice(-MAX_COMMON_MODULES);
     commonModulesStore.set('modules', merged);
 
-    console.log(`[${timestamp}] [version-json:add-common-modules] 已保存常用模块，当前共 ${merged.length} 个`);
+    console.debug(`[${timestamp}] [version-json:add-common-modules] 已保存常用模块，当前共 ${merged.length} 个`);
     return merged;
   });
 
@@ -121,7 +121,7 @@ module.exports = function registerVersionJsonHandlers(ipcMain, { getGit, getProj
     const remained = readCommonModules().filter(m => m !== target);
     commonModulesStore.set('modules', remained);
 
-    console.log(`[${timestamp}] [version-json:remove-common-module] 已删除常用模块: ${target}，剩余 ${remained.length} 个`);
+    console.debug(`[${timestamp}] [version-json:remove-common-module] 已删除常用模块: ${target}，剩余 ${remained.length} 个`);
     return remained;
   });
 
@@ -182,7 +182,7 @@ module.exports = function registerVersionJsonHandlers(ipcMain, { getGit, getProj
           (typeof moduleName === 'string' && moduleName.trim() ? moduleName.trim() : null);
 
         if (!resolvedModuleName) {
-          console.warn(`[${timestamp}] [version-json:append-relation] 无法自动获取模块名，需用户手动输入`);
+          console.debug(`[${timestamp}] [version-json:append-relation] 无法自动获取模块名，需用户手动输入`);
           return { success: false, needModuleName: true, error: '缺少 version.json，且无法自动获取模块名' };
         }
 
@@ -192,14 +192,14 @@ module.exports = function registerVersionJsonHandlers(ipcMain, { getGit, getProj
           relations: []
         };
         created = true;
-        console.log(`[${timestamp}] [version-json:append-relation] version.json 不存在，新建: moduleId=${json.moduleId}, moduleName=${resolvedModuleName}`);
+        console.debug(`[${timestamp}] [version-json:append-relation] version.json 不存在，新建: moduleId=${json.moduleId}, moduleName=${resolvedModuleName}`);
       }
 
       json.relations.push(entry);
       fs.writeFileSync(versionPath, stringifyVersionJson(json), 'utf-8');
       await git.raw(['add', 'version.json']);
 
-      console.log(`[${timestamp}] [version-json:append-relation] 已追加记录: issue=${issue}, modules=${relationModules.join('/')}, created=${created}`);
+      console.debug(`[${timestamp}] [version-json:append-relation] 已追加记录: issue=${issue}, modules=${relationModules.join('/')}, created=${created}`);
       return { success: true, created, moduleName: resolvedModuleName || json.moduleName };
     } catch (error) {
       console.error(`[${timestamp}] [version-json:append-relation] 失败: ${error.message}`);

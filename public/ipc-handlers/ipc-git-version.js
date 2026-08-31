@@ -10,7 +10,7 @@ const { transformInstanceofPatterns } = require('./instanceof-transform');
 module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProjectPath }) {
   ipcMain.handle('git-detect-version', async (event, targetBranch, commitMessage) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-detect-version] 检测版本: branch=${targetBranch}, message=${commitMessage}`);
+    console.debug(`[${timestamp}] [git-detect-version] 检测版本: branch=${targetBranch}, message=${commitMessage}`);
 
     if (!getGit()) throw new Error('未打开项目');
 
@@ -30,7 +30,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
         }
       }
 
-      console.log(`[${timestamp}] [git-detect-version] 找到 ${matchingShas.length} 条匹配记录`);
+      console.debug(`[${timestamp}] [git-detect-version] 找到 ${matchingShas.length} 条匹配记录`);
 
       const tagMap = new Map();
 
@@ -80,7 +80,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
         // 该分支无匹配的 V5.*.R.* tag
       }
 
-      console.log(`[${timestamp}] [git-detect-version] matchedTag: ${matchedTag?.tag}, latestTag: ${latestTag?.tag}`);
+      console.debug(`[${timestamp}] [git-detect-version] matchedTag: ${matchedTag?.tag}, latestTag: ${latestTag?.tag}`);
       return { matchedTag, latestTag };
     } catch (error) {
       console.error(`[${timestamp}] [git-detect-version] 错误: ${error.message}`);
@@ -91,7 +91,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
   // 获取冲突文件的 ours/theirs 干净版本（用于多语言自动合并）
   ipcMain.handle('git-get-conflict-file-versions', async (event, filePaths) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-get-conflict-file-versions] 获取冲突文件版本: ${filePaths.length} 个文件`);
+    console.debug(`[${timestamp}] [git-get-conflict-file-versions] 获取冲突文件版本: ${filePaths.length} 个文件`);
 
     if (!getGit() || !getProjectPath()) throw new Error('未打开项目');
 
@@ -113,7 +113,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
         }
         files.push({ path: filePath, ours, theirs });
       }
-      console.log(`[${timestamp}] [git-get-conflict-file-versions] 成功获取 ${files.length} 个文件版本`);
+      console.debug(`[${timestamp}] [git-get-conflict-file-versions] 成功获取 ${files.length} 个文件版本`);
       return { success: true, files };
     } catch (error) {
       console.error(`[${timestamp}] [git-get-conflict-file-versions] 失败: ${error.message}`);
@@ -124,7 +124,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
   // 写入文件内容并 git add
   ipcMain.handle('git-write-file-and-stage', async (event, files) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [git-write-file-and-stage] 写入并暂存 ${files.length} 个文件`);
+    console.debug(`[${timestamp}] [git-write-file-and-stage] 写入并暂存 ${files.length} 个文件`);
 
     if (!getGit() || !getProjectPath()) throw new Error('未打开项目');
 
@@ -134,7 +134,7 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
         const absPath = path.join(getProjectPath(), filePath);
         fs.writeFileSync(absPath, content, 'utf-8');
         await git.raw(['add', filePath]);
-        console.log(`[${timestamp}] [git-write-file-and-stage] 已处理: ${filePath}`);
+        console.debug(`[${timestamp}] [git-write-file-and-stage] 已处理: ${filePath}`);
       }
       return { success: true };
     } catch (error) {
@@ -240,10 +240,10 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
           const tr = transformInstanceofPatterns(result);
           if (tr.count > 0) {
             result = tr.content;
-            console.log(`[${timestamp}] [git-apply-version-replacement] instanceof 降级: ${filePath} 转换 ${tr.count} 处`);
+            console.debug(`[${timestamp}] [git-apply-version-replacement] instanceof 降级: ${filePath} 转换 ${tr.count} 处`);
           }
           for (const sk of tr.skipped) {
-            console.warn(`[${timestamp}] [git-apply-version-replacement] instanceof 跳过: ${filePath} (${sk.expr} instanceof ${sk.type} ${sk.var}) 原因: ${sk.reason}`);
+            console.debug(`[${timestamp}] [git-apply-version-replacement] instanceof 跳过: ${filePath} (${sk.expr} instanceof ${sk.type} ${sk.var}) 原因: ${sk.reason}`);
           }
         }
         if (result !== content) {
@@ -251,10 +251,10 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
           await git.raw(['add', filePath]);
           changedFiles.push(filePath);
           totalReplacements++;
-          console.log(`[${timestamp}] [git-apply-version-replacement] 替换: ${filePath}`);
+          console.debug(`[${timestamp}] [git-apply-version-replacement] 替换: ${filePath}`);
         }
       }
-      console.log(`[${timestamp}] [git-apply-version-replacement] direction=${direction}, 改动文件 ${changedFiles.length} 个`);
+      console.debug(`[${timestamp}] [git-apply-version-replacement] direction=${direction}, 改动文件 ${changedFiles.length} 个`);
       return { success: true, changedFiles, totalReplacements };
     } catch (error) {
       console.error(`[${timestamp}] [git-apply-version-replacement] 失败: ${error.message}`);
@@ -288,19 +288,19 @@ module.exports = function registerGitVersionHandlers(ipcMain, { getGit, getProje
       await runExec('git -c core.editor=true commit --fixup=HEAD');
       // 3. autosquash rebase：sequence.editor=true 自动确认 todo 列表，把 fixup 合并进对应遴选 commit
       await runExec(`git -c core.editor=true -c sequence.editor=true rebase -i --autosquash ${beforePickSha}`);
-      console.log(`[${timestamp}] [git-squash-into-parent] squash 成功，基点 ${beforePickSha.substring(0, 8)}`);
+      console.debug(`[${timestamp}] [git-squash-into-parent] squash 成功，基点 ${beforePickSha.substring(0, 8)}`);
       return { success: true };
     } catch (error) {
-      console.warn(`[${timestamp}] [git-squash-into-parent] 失败: ${error.message}，尝试回退`);
+      console.debug(`[${timestamp}] [git-squash-into-parent] 失败: ${error.message}，尝试回退`);
       try {
         await runExec('git -c core.editor=true rebase --abort');
-        console.log(`[${timestamp}] [git-squash-into-parent] rebase --abort 成功`);
+        console.debug(`[${timestamp}] [git-squash-into-parent] rebase --abort 成功`);
       } catch (abortErr) {
-        console.warn(`[${timestamp}] [git-squash-into-parent] rebase --abort 失败: ${abortErr.message}，尝试 --skip`);
+        console.debug(`[${timestamp}] [git-squash-into-parent] rebase --abort 失败: ${abortErr.message}，尝试 --skip`);
         try {
           await runExec('git -c core.editor=true rebase --skip');
         } catch (skipErr) {
-          console.warn(`[${timestamp}] [git-squash-into-parent] rebase --skip 失败: ${skipErr.message}`);
+          console.debug(`[${timestamp}] [git-squash-into-parent] rebase --skip 失败: ${skipErr.message}`);
         }
       }
       return { success: false, error: error.message, aborted: true };

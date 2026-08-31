@@ -14,14 +14,20 @@ npm run electron-dev
 # Build React app
 npm run build
 
-# Build Windows portable EXE
-npm run electron-build-win-portable
-
-# Build Windows installer
+# Build Windows installer (NSIS, stable channel)
 npm run electron-build-win
 
-# Build macOS DMG
-npm run electron-build-mac-dmg
+# Build Windows installer (beta channel, 生成 latest-beta.yml)
+npm run electron-build-win-beta
+
+# Build macOS DMG + ZIP (stable channel)
+npm run electron-build-mac
+
+# Build macOS DMG + ZIP (beta channel)
+npm run electron-build-mac-beta
+
+# 开发环境更新源服务器（localhost:8899 托管 dist/，模拟生产更新服务器）
+npm run update-server
 
 # Run tests
 npm test

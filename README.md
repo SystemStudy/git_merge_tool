@@ -45,29 +45,41 @@ npm run electron-dev
 ### 生产构建
 
 ```bash
-# 构建 Windows 安装包
+# 构建 Windows 安装包（NSIS，正式版通道）
 npm run electron-build-win
 
-# 构建 Windows 便携版
-npm run electron-build-win-portable
+# 构建 Windows 安装包（测试版通道，生成 latest-beta.yml）
+npm run electron-build-win-beta
 
-# 构建 macOS DMG 安装包
-npm run electron-build-mac-dmg
-
-# 构建 macOS 应用（DMG + ZIP）
+# 构建 macOS 应用（DMG + ZIP，正式版通道）
 npm run electron-build-mac
+
+# 构建 macOS 应用（DMG + ZIP，测试版通道）
+npm run electron-build-mac-beta
 
 # 构建所有平台
 npm run electron-pack
+
+# 开发环境更新源服务器（localhost:8899 托管 dist/，模拟生产更新服务器）
+npm run update-server
 ```
 
-构建完成后，安装包位于 `dist` 目录：
+构建完成后，安装包位于 `dist` 目录（安装版 + 更新元数据）：
 - **Windows**
-  - `Git合并辅助 Setup 1.5.2.exe` - 安装程序
-  - `Git合并辅助-便携版-1.5.2.exe` - 便携版（无需安装）
+  - `LandrayGitTool-Setup-1.0.0.exe` - NSIS 安装程序
+  - `latest.yml` - 更新元数据（electron-updater 使用）
 - **macOS**
-  - `LandrayGitTool-1.5.2.dmg` - DMG 安装包
-  - `LandrayGitTool-1.5.2-mac.zip` - ZIP 压缩包
+  - `LandrayGitTool-1.0.0.dmg` - DMG 安装包
+  - `LandrayGitTool-1.0.0-mac.zip` - ZIP 压缩包（自动更新使用）
+  - `latest-mac.yml` - 更新元数据（electron-updater 使用）
+
+### 自动更新
+
+- 应用启动后约 8 秒静默检查更新；发现新版本会弹窗提示，网络不可达时静默忽略（下次启动再检查）
+- 设置抽屉 → "检查更新"按钮可手动检查（网络不可达时会提示）
+- 更新通道：正式版（stable，默认）/ 测试版（beta），可在设置中切换
+- 生产更新源：`https://mkenv.ywork.me/mkenv/gitMergeVersion/`（构建产物需手动上传）
+- 开发环境使用本地更新源：先 `npm run electron-build-win` 构建，再 `npm run update-server`（localhost:8899）
 
 ## 使用说明
 

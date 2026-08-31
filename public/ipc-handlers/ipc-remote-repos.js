@@ -7,7 +7,7 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
     const timestamp = formatTimestamp();
     const git = getGit();
     if (!git) {
-      console.log(`[${timestamp}] [remote-repos:list] 未打开项目，返回空列表`);
+      console.debug(`[${timestamp}] [remote-repos:list] 未打开项目，返回空列表`);
       return [];
     }
     try {
@@ -19,7 +19,7 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
           name: r.name,
           url: (r.refs && (r.refs.fetch || r.refs.push)) || ''
         }));
-      console.log(`[${timestamp}] [remote-repos:list] 共 ${repos.length} 个远程仓库（已过滤 origin）`);
+      console.debug(`[${timestamp}] [remote-repos:list] 共 ${repos.length} 个远程仓库（已过滤 origin）`);
       return repos;
     } catch (error) {
       console.error(`[${timestamp}] [remote-repos:list] 错误: ${error.message}`);
@@ -34,7 +34,7 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
     if (!git) {
       return { success: false, error: '未打开项目，无法添加远程仓库' };
     }
-    console.log(`[${timestamp}] [remote-repos:add] 添加远程仓库: ${name} -> ${url}`);
+    console.debug(`[${timestamp}] [remote-repos:add] 添加远程仓库: ${name} -> ${url}`);
     try {
       await git.raw(['remote', 'add', name, url]);
       return { success: true };
@@ -51,7 +51,7 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
     if (!git) {
       return { success: false, error: '未打开项目，无法编辑远程仓库' };
     }
-    console.log(`[${timestamp}] [remote-repos:update] 编辑远程仓库: ${oldName} -> ${name} (${url})`);
+    console.debug(`[${timestamp}] [remote-repos:update] 编辑远程仓库: ${oldName} -> ${name} (${url})`);
     try {
       if (oldName !== name) {
         await git.raw(['remote', 'rename', oldName, name]);
@@ -71,7 +71,7 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
     if (!git) {
       return { success: false, error: '未打开项目，无法删除远程仓库' };
     }
-    console.log(`[${timestamp}] [remote-repos:remove] 删除远程仓库: ${name}`);
+    console.debug(`[${timestamp}] [remote-repos:remove] 删除远程仓库: ${name}`);
     try {
       await git.raw(['remote', 'remove', name]);
       return { success: true };
@@ -84,11 +84,11 @@ module.exports = function registerRemoteRepoHandlers(ipcMain, { getGit }) {
   // 测试远程地址连通性：git ls-remote --heads <url>
   ipcMain.handle('remote-repos:test-connection', async (event, { url }) => {
     const timestamp = formatTimestamp();
-    console.log(`[${timestamp}] [remote-repos:test-connection] 测试连接: ${url}`);
+    console.debug(`[${timestamp}] [remote-repos:test-connection] 测试连接: ${url}`);
     try {
       const result = await simpleGit().raw(['ls-remote', '--heads', url]);
       const branchCount = result.trim().split('\n').filter(Boolean).length;
-      console.log(`[${timestamp}] [remote-repos:test-connection] 连接成功，远程分支数: ${branchCount}`);
+      console.debug(`[${timestamp}] [remote-repos:test-connection] 连接成功，远程分支数: ${branchCount}`);
       return { success: true, branchCount };
     } catch (error) {
       console.error(`[${timestamp}] [remote-repos:test-connection] 连接失败: ${error.message}`);

@@ -5,7 +5,6 @@ const Store = require('electron-store');
 const simpleGit = require('simple-git');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
-const axios = require('axios');
 const { initLogger, getLogFilePath, closeLogger } = require('./logger');
 
 // IPC handler 模块
@@ -15,6 +14,7 @@ const registerGitLabHandlers = require('./ipc-handlers/ipc-gitlab');
 const registerSystemHandlers = require('./ipc-handlers/ipc-system');
 const registerRemoteRepoHandlers = require('./ipc-handlers/ipc-remote-repos');
 const registerVersionJsonHandlers = require('./ipc-handlers/ipc-version-json');
+const registerUpdaterHandlers = require('./ipc-handlers/ipc-updater');
 const projectStore = require('./project-store');
 
 initLogger();
@@ -38,6 +38,7 @@ const store = new Store({
       defaultDeleteSourceEnabled: true,
       authorReplaceEmail: '',        // author 邮箱不合规时的默认替换邮箱
       themeColor: '#4F46E5',
+      updateChannel: 'stable',       // 更新通道: stable(正式版) / beta(测试版)
     }
   }
 });
@@ -57,69 +58,16 @@ const store = new Store({
 {
   const result = projectStore.migrateFromLegacyStore(store);
   if (result.migrated) {
-    console.log(`[migration] 项目配置迁移成功: ${result.projectCount} 个项目`);
+    console.debug(`[migration] 项目配置迁移成功: ${result.projectCount} 个项目`);
   } else {
-    console.log(`[migration] 项目配置无需迁移: ${result.reason}`);
-  }
-}
-
-// 全局配置存储（与服务端下发配置对应，与应用本地设置 store 区分开）
-// 文件名: git-merge-assistant-global-config.json，独立于 git-merge-assistant-config.json
-const globalConfigStore = new Store({
-  name: 'git-merge-assistant-global-config',
-  defaults: {
-    config: null,        // 服务端下发的全局配置内容
-    lastUpdated: null    // 最近一次成功更新时间（ISO 字符串）
-  }
-});
-
-// 全局配置获取状态（暂存，便于在渲染进程加载完成后补发）
-// fetched: 是否已完成本次启动的请求；success: 是否成功
-let globalConfigStatus = { fetched: false, success: false, error: null };
-
-// 服务端全局配置地址
-const GLOBAL_CONFIG_URL = 'https://mkenv.ywork.me/mkenv/git_merge_global_config.json';
-
-/**
- * 启动时拉取服务端全局配置并写入独立的 globalConfigStore。
- * 成功：写入文件；失败：记录状态。结果通过 notifyGlobalConfigStatus 推送给渲染进程。
- */
-async function fetchGlobalConfig() {
-  const timestamp = formatTimestamp();
-  console.log(`[${timestamp}] [fetchGlobalConfig] 开始拉取服务端全局配置: ${GLOBAL_CONFIG_URL}`);
-  try {
-    const response = await axios.get(GLOBAL_CONFIG_URL, { timeout: 10000 });
-    // 服务端 Content-Type 不一定是 application/json，axios 可能不自动解析。
-    // 这里做一层通用归一化：字符串则尝试 JSON.parse，失败则原样存储。
-    let configData = response.data;
-    if (typeof configData === 'string' && configData.trim()) {
-      try {
-        configData = JSON.parse(configData);
-      } catch {
-        // 非 JSON 字符串，保持原字符串存储
-      }
-    }
-    globalConfigStore.set('config', configData);
-    globalConfigStore.set('lastUpdated', new Date().toISOString());
-    globalConfigStatus = { fetched: true, success: true, error: null };
-    console.log(`[${timestamp}] [fetchGlobalConfig] 全局配置拉取成功并已写入`);
-  } catch (error) {
-    globalConfigStatus = { fetched: true, success: false, error: error.message || String(error) };
-    console.warn(`[${timestamp}] [fetchGlobalConfig] 全局配置拉取失败: ${globalConfigStatus.error}`);
-  }
-  notifyGlobalConfigStatus();
-}
-
-// 将全局配置获取状态推送给渲染进程（若窗口已销毁或未加载则跳过）
-function notifyGlobalConfigStatus() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('global-config-status', globalConfigStatus);
+    console.debug(`[migration] 项目配置无需迁移: ${result.reason}`);
   }
 }
 
 let mainWindow = null;
 let currentGit = null;
 let currentProjectPath = null;
+let updateController = null; // 自动更新控制器（ipc-updater 注册后赋值）
 
 function formatTimestamp() {
   const now = new Date();
@@ -172,13 +120,6 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // 页面加载完成后，若全局配置状态已就绪则补发一次，避免请求早于加载导致渲染进程错过通知
-  mainWindow.webContents.on('did-finish-loading', () => {
-    if (globalConfigStatus.fetched) {
-      notifyGlobalConfigStatus();
-    }
-  });
-
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     const levelMap = { 0: 'LOG', 1: 'WARN', 2: 'ERROR', 3: 'INFO', 4: 'DEBUG' };
     const levelName = levelMap[level] || 'LOG';
@@ -188,10 +129,10 @@ function createWindow() {
         console.error(prefix, message);
         break;
       case 'WARN':
-        console.warn(prefix, message);
+        console.debug(prefix, message);
         break;
       default:
-        console.log(prefix, message);
+        console.debug(prefix, message);
     }
   });
 }
@@ -199,11 +140,11 @@ function createWindow() {
 // 打开项目
 async function openProject(projectPath) {
   const timestamp = formatTimestamp();
-  console.log(`[${timestamp}] [openProject] 开始打开项目: ${projectPath}`);
+  console.debug(`[${timestamp}] [openProject] 开始打开项目: ${projectPath}`);
   
   try {
     // 检查是否为Git仓库
-    console.log(`[${timestamp}] [openProject] 检查是否为Git仓库...`);
+    console.debug(`[${timestamp}] [openProject] 检查是否为Git仓库...`);
     const isGitRepo = await checkGitRepository(projectPath);
     
     if (!isGitRepo) {
@@ -213,7 +154,7 @@ async function openProject(projectPath) {
     }
 
     // 初始化Git
-    console.log(`[${timestamp}] [openProject] 初始化Git仓库...`);
+    console.debug(`[${timestamp}] [openProject] 初始化Git仓库...`);
     currentGit = simpleGit(projectPath, {
       config: [],
       timeout: {
@@ -230,22 +171,22 @@ async function openProject(projectPath) {
     currentProjectPath = projectPath;
 
     // 获取项目信息
-    console.log(`[${timestamp}] [openProject] 获取项目信息...`);
+    console.debug(`[${timestamp}] [openProject] 获取项目信息...`);
     const projectInfo = await getProjectInfo(projectPath);
-    console.log(`[${timestamp}] [openProject] 项目信息:`, JSON.stringify(projectInfo, null, 2));
+    console.debug(`[${timestamp}] [openProject] 项目信息:`, JSON.stringify(projectInfo, null, 2));
     
     // 添加到最近项目列表
-    console.log(`[${timestamp}] [openProject] 添加到最近项目列表...`);
+    console.debug(`[${timestamp}] [openProject] 添加到最近项目列表...`);
     addToRecentProjects(projectPath, projectInfo.name);
 
     // 通知渲染进程
-    console.log(`[${timestamp}] [openProject] 发送项目打开事件到渲染进程`);
+    console.debug(`[${timestamp}] [openProject] 发送项目打开事件到渲染进程`);
     mainWindow.webContents.send('project-opened', {
       path: projectPath,
       info: projectInfo
     });
 
-    console.log(`[${timestamp}] [openProject] 项目打开成功`);
+    console.debug(`[${timestamp}] [openProject] 项目打开成功`);
     return { success: true, project: projectInfo };
   } catch (error) {
     console.error(`[${timestamp}] [openProject] 打开项目失败:`, error);
@@ -321,14 +262,16 @@ function setupIpcHandlers() {
     mainWindow,
     store,
     projectStore,
-    globalConfigStore,
-    globalConfigStatus,
     getProjectPath,
     getLogFilePath,
     openProject
   });
   registerRemoteRepoHandlers(ipcMain, { getGit });
   registerVersionJsonHandlers(ipcMain, { getGit, getProjectPath });
+  updateController = registerUpdaterHandlers(ipcMain, {
+    getWindow: () => mainWindow,
+    store
+  });
 }
 
 // 应用生命周期
@@ -336,8 +279,12 @@ app.whenReady().then(() => {
   createWindow();
   setupIpcHandlers();
 
-  // 启动时异步拉取服务端全局配置（不阻塞窗口显示）
-  fetchGlobalConfig();
+  // 启动后延迟静默检查更新：网络不可达时静默结束（仅日志），下次启动再检查
+  setTimeout(() => {
+    if (updateController) {
+      updateController.checkForUpdatesSilently();
+    }
+  }, 8000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
