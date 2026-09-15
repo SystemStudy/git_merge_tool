@@ -1,0 +1,51 @@
+name: Build Windows Installer
+
+on:
+  # 手动触发：在 Actions 页面点 "Run workflow"
+  workflow_dispatch:
+  # 推送 v 开头的 tag 时自动构建，例如 v1.1.1
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    # 原生 Windows 环境，无需 Wine，也不受 macOS Rosetta 移除的影响
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建 Windows 安装包
+        # CI=false：react-scripts 在 CI 环境下会把 ESLint warning 当成 error 中断构建
+        # --publish never：只产出安装包，不走 electron-builder 的发布流程
+        run: npm run electron-build-win -- --publish never
+        env:
+          CI: false
+
+      - name: 输出构建版本
+        run: npm pkg get version
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: LandrayGitTool-Windows-${{ github.ref_name }}
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+          retention-days: 30
