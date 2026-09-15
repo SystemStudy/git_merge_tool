@@ -9,6 +9,7 @@ const THEME_COLORS = [
   { name: '青色', value: '#13C2C2' },
   { name: '翠绿', value: '#10B981' },
   { name: '橙色', value: '#F59E0B' },
+  { name: '黄色', value: '#EAB308' },
   { name: '玫红', value: '#EB2F96' },
 ];
 

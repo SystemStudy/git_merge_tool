@@ -1,6 +1,6 @@
 {
   "name": "LandrayGitTool",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Git合并辅助工具 - Electron+React版本",
   "main": "public/electron.js",
   "homepage": ".",
@@ -70,7 +70,15 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "publisherName": "蓝凌软件"
+      "publisherName": "蓝凌软件",
+      "files": [
+        "!node_modules/bare-*/prebuilds/android-*/**",
+        "!node_modules/bare-*/prebuilds/ios-*/**",
+        "!node_modules/bare-*/prebuilds/linux-*/**",
+        "!node_modules/bare-*/prebuilds/darwin-*/**",
+        "!node_modules/bare-*/prebuilds/win32-arm64/**",
+        "!node_modules/fsevents/**"
+      ]
     },
     "mac": {
       "target": [
@@ -90,7 +98,15 @@
         }
       ],
       "icon": "assets/icon.icns",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "files": [
+        "!node_modules/bare-*/prebuilds/android-*/**",
+        "!node_modules/bare-*/prebuilds/ios-*/**",
+        "!node_modules/bare-*/prebuilds/linux-*/**",
+        "!node_modules/bare-*/prebuilds/win32-*/**",
+        "!node_modules/bare-*/prebuilds/darwin-x64/**",
+        "!node_modules/fsevents/**"
+      ]
     },
     "nsis": {
       "oneClick": false,
